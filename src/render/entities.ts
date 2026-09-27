@@ -16,6 +16,8 @@ import {
 import { autotile, COLS, DEPTH, ROW } from './terrain';
 
 const BAR_DEPTH = DEPTH.fog - 10;
+/** Where the frame sits inside SmallBar_Base.png, and how big the packed frame is. */
+const BAR_FRAME = { cap: 15, mid: 64, h: 19, top: 22, scale: 0.6 } as const;
 
 interface UnitView {
     sprite: Phaser.GameObjects.Sprite;
@@ -53,9 +55,26 @@ export class EntityRenderer {
     private rings: Phaser.GameObjects.Graphics;
     private camp = new Map<number, Phaser.GameObjects.Sprite>();
 
+    private frames: Phaser.GameObjects.NineSlice[] = [];
+    private framesUsed = 0;
+
     constructor(private readonly scene: Phaser.Scene, private sim: Sim) {
         this.bars = scene.add.graphics().setDepth(BAR_DEPTH);
         this.rings = scene.add.graphics().setDepth(DEPTH.decals + 1);
+        this.buildBarFrame();
+    }
+
+    /** Packs the Tiny Swords small bar (caps and middle are spread apart in the sheet) into one stretchable frame. */
+    private buildBarFrame() {
+        if (this.scene.textures.exists('hp-frame')) return;
+        const src = this.scene.textures.get('bar-base').getSourceImage() as HTMLImageElement;
+        const canvas = this.scene.textures.createCanvas('hp-frame', BAR_FRAME.cap * 2 + BAR_FRAME.mid, BAR_FRAME.h)!;
+        const ctx = canvas.getContext();
+        const { cap, mid, h, top } = BAR_FRAME;
+        ctx.drawImage(src, 49, top, cap, h, 0, 0, cap, h);
+        ctx.drawImage(src, 128, top, mid, h, cap, 0, mid, h);
+        ctx.drawImage(src, 256, top, cap, h, cap + mid, 0, cap, h);
+        canvas.refresh();
     }
 
     setSim(sim: Sim) {
@@ -501,6 +520,7 @@ export class EntityRenderer {
         const rings = this.rings;
         g.clear();
         rings.clear();
+        this.framesUsed = 0;
         const cam = this.scene.cameras.main;
         const view = cam.worldView;
         const margin = 128;
@@ -548,8 +568,9 @@ export class EntityRenderer {
             } else if (b.hp < max || selected || sel.hover === b.id) {
                 this.bar(g, cx, top, w, b.hp / max, this.barColor(b.faction));
             }
-            if (b.queue.length && b.faction === KINGDOM) this.bar(g, cx, top + 10, w * 0.8, b.queue[0].progress, 0xffd34d);
+            if (b.queue.length && b.faction === KINGDOM) this.bar(g, cx, top + 12, w * 0.8, b.queue[0].progress, 0xffd34d);
         }
+        for (let i = this.framesUsed; i < this.frames.length; i++) this.frames[i].setVisible(false);
     }
 
     private barColor(faction: FactionId): number {
@@ -559,19 +580,30 @@ export class EntityRenderer {
         return 0xe8c547;
     }
 
-    /** Health bar in the Tiny Swords style: a dark wooden frame with a coloured fill. */
+    /** Health bar: a coloured fill under the Tiny Swords bar frame. */
     private bar(g: Phaser.GameObjects.Graphics, cx: number, y: number, w: number, frac: number, color: number) {
-        const h = 7;
+        const { scale, h, cap } = BAR_FRAME;
+        const frameH = h * scale;
+        const inset = cap * scale * 0.55;
         const x = cx - w / 2;
-        g.fillStyle(0x3b2a1e, 1);
-        g.fillRoundedRect(x - 2, y - 2, w + 4, h + 4, 3);
+        const innerW = w - inset * 2;
+        const fillY = y + frameH * 0.3;
+        const fillH = frameH * 0.42;
         g.fillStyle(0x1b1410, 1);
-        g.fillRect(x, y, w, h);
+        g.fillRect(x + inset, fillY, innerW, fillH);
         g.fillStyle(color, 1);
-        g.fillRect(x, y, Math.max(0, Math.min(1, frac)) * w, h);
-        g.fillStyle(0xffffff, 0.25);
-        g.fillRect(x, y, Math.max(0, Math.min(1, frac)) * w, 2);
-        g.lineStyle(1, 0xd8b47a, 0.8);
-        g.strokeRoundedRect(x - 2, y - 2, w + 4, h + 4, 3);
+        g.fillRect(x + inset, fillY, Math.max(0, Math.min(1, frac)) * innerW, fillH);
+        g.fillStyle(0xffffff, 0.3);
+        g.fillRect(x + inset, fillY, Math.max(0, Math.min(1, frac)) * innerW, 1.5);
+
+        let frame = this.frames[this.framesUsed];
+        if (!frame) {
+            frame = this.scene.add.nineslice(0, 0, 'hp-frame', undefined, 100, h, cap, cap, 0, 0).setOrigin(0, 0).setScale(scale).setDepth(BAR_DEPTH + 1);
+            this.frames.push(frame);
+        }
+        this.framesUsed++;
+        frame.setVisible(true);
+        frame.setSize(w / scale, h);
+        frame.setPosition(x, y);
     }
 }

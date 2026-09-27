@@ -9,6 +9,8 @@ import { VOTE_THRESHOLD } from '../data/balance';
 import { makePerson } from './people';
 import { createTradeRoute, issueSmartCommand, sendMessenger } from './commands';
 import { damageBuilding, killUnit } from './combat';
+import { carryCapacity } from './economy';
+import { startResearch } from './buildings';
 
 const run = (sim: ReturnType<typeof newGame>, seconds: number, dt = 1 / 20) => {
     for (let t = 0; t < seconds; t += dt) sim.update(dt);
@@ -208,6 +210,25 @@ describe('game simulation', () => {
         const sim = newGame(99);
         run(sim, 300);
         expect(Object.keys(sim.state.diplomacy.relations).length).toBeGreaterThan(0);
+    });
+
+    it('researches a technology that changes the rules', () => {
+        const sim = newGame(55);
+        const camp = sim.state.villages.find((v) => v.stage === 'camp')!;
+        joinKingdom(sim, camp, null);
+        const e = sim.explorer()!;
+        e.x = camp.cx + 1;
+        e.y = camp.cy + 2;
+        run(sim, 60);
+        const tc = sim.townCenter(camp)!;
+        camp.stock.food += 500;
+        camp.stock.wood += 500;
+        const pawn = sim.citizens(camp.id)[0];
+        const before = carryCapacity(sim, pawn);
+        expect(startResearch(sim, tc, 'wheelbarrow')).toBeNull();
+        run(sim, 35);
+        expect(sim.hasTech('wheelbarrow')).toBe(true);
+        expect(carryCapacity(sim, pawn)).toBeGreaterThan(before);
     });
 
     it('sends villagers to chop a tree on right-click', () => {
