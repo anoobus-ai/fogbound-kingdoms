@@ -4,11 +4,11 @@ import { Pathfinder } from './pathfinding';
 import { newGame } from './create';
 import { deserialize, serialize } from './save';
 import { KINGDOM } from './types';
-import { joinKingdom, judge, resolveProposal, startProposal } from './politics';
+import { joinKingdom, judge, resolveProposal, secede, startProposal } from './politics';
 import { VOTE_THRESHOLD } from '../data/balance';
 import { makePerson } from './people';
-import { issueSmartCommand } from './commands';
-import { killUnit } from './combat';
+import { issueSmartCommand, sendMessenger } from './commands';
+import { damageBuilding, killUnit } from './combat';
 
 const run = (sim: ReturnType<typeof newGame>, seconds: number, dt = 1 / 20) => {
     for (let t = 0; t < seconds; t += dt) sim.update(dt);
@@ -150,6 +150,40 @@ describe('game simulation', () => {
         monk.order = { type: 'convert', targetId: enemy.id, progress: 0 };
         run(sim, 7);
         expect(enemy.faction).toBe(KINGDOM);
+    });
+
+    it('delivers a messenger order to a faraway village and the leader answers', () => {
+        const sim = newGame(33);
+        const [a, b] = sim.state.villages.filter((v) => v.stage === 'camp');
+        joinKingdom(sim, a, null);
+        joinKingdom(sim, b, null);
+        run(sim, 90);
+        const e = sim.explorer()!;
+        e.x = a.cx + 1;
+        e.y = a.cy + 2;
+        b.stock.wood += 500;
+        b.loyalty = 90;
+        expect(sendMessenger(sim, b.id, { type: 'build', building: 'house' })).toBeNull();
+        const messenger = sim.state.units.find((u) => u.kind === 'messenger')!;
+        expect(messenger).toBeDefined();
+        const logBefore = sim.state.log.length;
+        run(sim, 120);
+        expect(sim.state.units.some((u) => u.kind === 'messenger')).toBe(false);
+        const replies = sim.state.log.slice(logBefore).filter((l) => l.text.startsWith('Messenger arrived'));
+        expect(replies.length).toBe(1);
+    });
+
+    it('lets the kingdom retake an exiled village by capturing its town center', () => {
+        const sim = newGame(12);
+        const camp = sim.state.villages.find((v) => v.stage === 'camp')!;
+        joinKingdom(sim, camp, null);
+        run(sim, 90);
+        secede(sim, camp, ['test'], 'test');
+        expect(camp.faction).not.toBe(KINGDOM);
+        const tc = sim.townCenter(camp)!;
+        damageBuilding(sim, tc, tc.hp + 10, KINGDOM);
+        expect(camp.faction).toBe(KINGDOM);
+        expect(sim.state.buildings.includes(tc)).toBe(true);
     });
 
     it('sends villagers to chop a tree on right-click', () => {
