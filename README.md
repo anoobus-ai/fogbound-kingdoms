@@ -1,158 +1,76 @@
-# Phaser Vite TypeScript Template
+# Fogbound Kingdoms
 
-This is a Phaser project template that uses Vite for bundling. It supports hot-reloading for quick development workflow, includes TypeScript support and scripts to generate production-ready builds.
+A fog-of-war, open-world RTS that runs in your browser. You are an explorer in a world hidden in darkness.
+Find the people living in tiny camps, invite them into your kingdom, and grow them into prosperous villages —
+but villagers have minds of their own. Ignore them for too long and they may exile you.
 
-**[This Template is also available as a JavaScript version.](https://github.com/phaserjs/template-vite)**
+Built with [Phaser 4](https://phaser.io), TypeScript and Vite, using the free
+[Tiny Swords](https://pixelfrog-assets.itch.io/tiny-swords) art by Pixel Frog.
 
-### Versions
+## Playing it
 
-This template has been updated for:
-
-- [Phaser 4](https://github.com/phaserjs/phaser)
-- [Vite 6.3.1](https://github.com/vitejs/vite)
-- [TypeScript 5.7.2](https://github.com/microsoft/TypeScript)
-
-![screenshot](screenshot.png)
-
-## Requirements
-
-[Node.js](https://nodejs.org) is required to install dependencies and run scripts via `npm`.
-
-## Available Commands
-
-| Command | Description |
-|---------|-------------|
-| `npm install` | Install project dependencies |
-| `npm run dev` | Launch a development web server |
-| `npm run build` | Create a production build in the `dist` folder |
-| `npm run dev-nolog` | Launch a development web server without sending anonymous data (see "About log.js" below) |
-| `npm run build-nolog` | Create a production build in the `dist` folder without sending anonymous data (see "About log.js" below) |
-
-## Writing Code
-
-After cloning the repo, run `npm install` from your project directory. Then, you can start the local development server by running `npm run dev`.
-
-The local development server runs on `http://localhost:8080` by default. Please see the Vite documentation if you wish to change this, or add SSL support.
-
-Once the server is running you can edit any of the files in the `src` folder. Vite will automatically recompile your code and then reload the browser.
-
-## Template Project Structure
-
-We have provided a default project structure to get you started. This is as follows:
-
-## Template Project Structure
-
-We have provided a default project structure to get you started:
-
-| Path                         | Description                                                |
-|------------------------------|------------------------------------------------------------|
-| `index.html`                 | A basic HTML page to contain the game.                     |
-| `public/assets`              | Game sprites, audio, etc. Served directly at runtime.      |
-| `public/style.css`           | Global layout styles.                                      |
-| `src/main.ts`                | Application bootstrap.                                     |
-| `src/game`                   | Folder containing the game code.                           |
-| `src/game/main.ts`           | Game entry point: configures and starts the game.          |
-| `src/game/scenes`            | Folder with all Phaser game scenes.                        | 
-
-
-## Handling Assets
-
-Vite supports loading assets via JavaScript module `import` statements.
-
-This template provides support for both embedding assets and also loading them from a static folder. To embed an asset, you can import it at the top of the JavaScript file you are using it in:
-
-```js
-import logoImg from './assets/logo.png'
-```
-
-To load static files such as audio files, videos, etc place them into the `public/assets` folder. Then you can use this path in the Loader calls within Phaser:
-
-```js
-preload ()
-{
-    //  This is an example of an imported bundled image.
-    //  Remember to import it at the top of this file
-    this.load.image('logo', logoImg);
-
-    //  This is an example of loading a static image
-    //  from the public/assets folder:
-    this.load.image('background', 'assets/bg.png');
-}
-```
-
-When you issue the `npm run build` command, all static assets are automatically copied to the `dist/assets` folder.
-
-## Deploying to Production
-
-After you run the `npm run build` command, your code will be built into a single bundle and saved to the `dist` folder, along with any other assets your project imported, or stored in the public assets folder.
-
-In order to deploy your game, you will need to upload *all* of the contents of the `dist` folder to a public facing web server.
-
-## Customizing the Template
-
-### Vite
-
-If you want to customize your build, such as adding plugin (i.e. for loading CSS or fonts), you can modify the `vite/config.*.mjs` file for cross-project changes, or you can modify and/or create new configuration files and target them in specific npm tasks inside of `package.json`. Please see the [Vite documentation](https://vitejs.dev/) for more information.
-
-## About log.js
-
-If you inspect our node scripts you will see there is a file called `log.js`. This file makes a single silent API call to a domain called `gryzor.co`. This domain is owned by Phaser Studio Inc. The domain name is a homage to one of our favorite retro games.
-
-We send the following 3 pieces of data to this API: The name of the template being used (vue, react, etc). If the build was 'dev' or 'prod' and finally the version of Phaser being used.
-
-At no point is any personal data collected or sent. We don't know about your project files, device, browser or anything else. Feel free to inspect the `log.js` file to confirm this.
-
-Why do we do this? Because being open source means we have no visible metrics about which of our templates are being used. We work hard to maintain a large and diverse set of templates for Phaser developers and this is our small anonymous way to determine if that work is actually paying off, or not. In short, it helps us ensure we're building the tools for you.
-
-However, if you don't want to send any data, you can use these commands instead:
-
-Dev:
+You need [Node.js](https://nodejs.org) (already installed on this Mac).
 
 ```bash
-npm run dev-nolog
+npm install        # first time only
+npm run dev        # starts the game
 ```
 
-Build:
+Then open <http://localhost:5173>. Add `?seed=1234` to the address to play a specific map again.
 
-```bash
-npm run build-nolog
-```
+### Getting the art (only needed on a new computer)
 
-Or, to disable the log entirely, simply delete the file `log.js` and remove the call to it in the `scripts` section of `package.json`:
+The Tiny Swords license does not allow sharing the art files, so they are not stored in git.
 
-Before:
+1. Download both files from <https://pixelfrog-assets.itch.io/tiny-swords> (enter $0 if you like):
+   **Tiny Swords (Free Pack).zip** and **TS_old version_CC0 Licensed**.
+2. Leave them in your Downloads folder and run `npm run assets`.
 
-```json
-"scripts": {
-    "dev": "node log.js dev & dev-template-script",
-    "build": "node log.js build & build-template-script"
-},
-```
+## Controls
 
-After:
+| Action | How |
+| --- | --- |
+| Select | Left click, or drag a box around your units |
+| Move / attack / gather / build / talk | Right click (it depends on what you click) |
+| March and attack everything on the way | Ctrl + right click |
+| Move the camera | WASD, arrow keys, push the mouse to the screen edge, or right-drag |
+| Zoom | Mouse wheel |
+| Follow your explorer | F |
+| Jump to / select your explorer | Space / H |
+| Cancel | Esc or right click |
 
-```json
-"scripts": {
-    "dev": "dev-template-script",
-    "build": "build-template-script"
-},
-```
+The in-game **?** button explains everything again.
 
-Either of these will stop `log.js` from running. If you do decide to do this, please could you at least join our Discord and tell us which template you're using! Or send us a quick email. Either will be super-helpful, thank you.
+## How the game works
 
-## Join the Phaser Community!
+- **Fog of war:** the map starts black. Anything your people see stays revealed forever. Enemy units only show
+  while someone of yours can see them (you can turn this off in the menu).
+- **Presence:** you command units within 18 tiles of your explorer. Faraway villages get orders by **messenger**,
+  who walks there and can be killed. The village leader may refuse.
+- **Leaders:** when you leave a village you choose who rules. Their personality decides what they build. When you
+  return you get a report and can keep or replace them.
+- **Votes:** at 12 people, villagers vote on decisions. You have the final say, but going against them raises unrest
+  and creates grievances.
+- **Exile:** when you come back to a village whose people disagree with you (your agenda, expensive projects like
+  the Gold Palace, ignored votes, broken promises) they may vote to throw you out. Rally allies, build an army and
+  capture their Town Center to take it back.
+- **Needs from the land:** snowy villages need food and warmth, forest villages want walls against wolves and
+  bears, desert villages need wells or an oasis, hillside villages dream of beauty and wealth.
+- **Soldiers cost food.** Warriors beat Archers, Lancers beat Warriors, Archers beat Lancers. Militia are cheap;
+  Monks heal and convert enemies.
+- **Death is permanent** for everyone except your explorer, who returns at the last friendly village he visited.
 
-We love to see what developers like you create with Phaser! It really motivates us to keep improving. So please join our community and show-off your work 😄
+## Where things live in the code
 
-**Visit:** The [Phaser website](https://phaser.io) and follow on [Phaser Twitter](https://twitter.com/phaser_)<br />
-**Play:** Some of the amazing games [#madewithphaser](https://twitter.com/search?q=%23madewithphaser&src=typed_query&f=live)<br />
-**Learn:** [API Docs](https://newdocs.phaser.io), [Support Forum](https://phaser.discourse.group/) and [StackOverflow](https://stackoverflow.com/questions/tagged/phaser-framework)<br />
-**Discord:** Join us on [Discord](https://discord.gg/phaser)<br />
-**Code:** 2000+ [Examples](https://labs.phaser.io)<br />
-**Read:** The [Phaser World](https://phaser.io/community/newsletter) Newsletter<br />
+| Folder | What's inside |
+| --- | --- |
+| `src/data/` | **Numbers you can tweak**: unit stats and costs, buildings, personality traits, biomes, techs, timings (`balance.ts`). |
+| `src/sim/` | The game rules, with no drawing code: map generation, pathfinding, combat, economy, villages, politics, diplomacy, saving. |
+| `src/render/` | Drawing the world with Phaser: terrain, units, buildings, fog, effects. |
+| `src/scenes/` | Phaser scenes: `BootScene` loads the art, `WorldScene` runs the camera, mouse and keyboard. |
+| `src/ui/` | The HTML interface on top of the game: resource bar, panels, pop-ups, minimap. |
+| `src/audio/` | Sound effects and music. |
 
-Created by [Phaser Studio](mailto:support@phaser.io). Powered by coffee, anime, pixels and love.
+Run the automated tests with `npm test`.
 
-The Phaser logo and characters are &copy; 2011 - 2025 Phaser Studio Inc.
-
-All rights reserved.
+See [CREDITS.md](CREDITS.md) for all art, sound and music sources.
