@@ -7,7 +7,7 @@ import { KINGDOM } from './types';
 import { joinKingdom, judge, resolveProposal, secede, startProposal } from './politics';
 import { VOTE_THRESHOLD } from '../data/balance';
 import { makePerson } from './people';
-import { issueSmartCommand, sendMessenger } from './commands';
+import { createTradeRoute, issueSmartCommand, sendMessenger } from './commands';
 import { damageBuilding, killUnit } from './combat';
 
 const run = (sim: ReturnType<typeof newGame>, seconds: number, dt = 1 / 20) => {
@@ -184,6 +184,30 @@ describe('game simulation', () => {
         damageBuilding(sim, tc, tc.hp + 10, KINGDOM);
         expect(camp.faction).toBe(KINGDOM);
         expect(sim.state.buildings.includes(tc)).toBe(true);
+    });
+
+    it('runs trade caravans between two friendly villages for gold', () => {
+        const sim = newGame(44);
+        const [a, b] = sim.state.villages.filter((v) => v.stage === 'camp');
+        joinKingdom(sim, a, null);
+        joinKingdom(sim, b, null);
+        const e = sim.explorer()!;
+        e.x = a.cx + 1;
+        e.y = a.cy + 2;
+        run(sim, 90);
+        a.stock.wood += 600;
+        a.stock.food += 300;
+        expect(createTradeRoute(sim, a.id, b.id)).toBeNull();
+        const goldBefore = a.stock.gold + b.stock.gold;
+        run(sim, 200);
+        expect(sim.state.units.some((u) => u.kind === 'caravan')).toBe(true);
+        expect(a.stock.gold + b.stock.gold).toBeGreaterThan(goldBefore);
+    });
+
+    it('lets independent villages form opinions of each other over time', () => {
+        const sim = newGame(99);
+        run(sim, 300);
+        expect(Object.keys(sim.state.diplomacy.relations).length).toBeGreaterThan(0);
     });
 
     it('sends villagers to chop a tree on right-click', () => {

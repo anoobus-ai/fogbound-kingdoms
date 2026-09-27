@@ -86,7 +86,7 @@ export const updateDiplomacy = (sim: Sim) => {
     if (now - (lastTick.get(sim) ?? -10) < 5) return;
     lastTick.set(sim, now);
     const d = sim.state.diplomacy;
-    const factions = independentFactions(sim);
+    const factions = independentFactions(sim).filter((f) => sim.state.villages.some((v) => v.faction === f && v.stage === 'village'));
 
     // Independent villages among themselves.
     for (let i = 0; i < factions.length; i++) {
@@ -96,18 +96,18 @@ export const updateDiplomacy = (sim: Sim) => {
             const key = pairKey(a, b);
             const status = d.status[key] ?? 'neutral';
             const dist = closestDistance(sim, a, b);
-            let target = compatibility(cultureOf(sim, a), cultureOf(sim, b)) - (dist < 35 ? 12 : 0);
-            if (status === 'war') target += 25;
+            let target = compatibility(cultureOf(sim, a), cultureOf(sim, b)) * 4.5 - (dist < 40 ? 22 : 0);
+            if (status === 'war') target += 30;
             const rel = d.relations[key] ?? 0;
-            d.relations[key] = rel + (target - rel) * 0.04 + sim.rng.range(-1.5, 1.5);
+            d.relations[key] = Math.max(-100, Math.min(100, rel + (target - rel) * 0.05 + sim.rng.range(-2, 2)));
             const r = d.relations[key];
             let next: DiplomacyStatus = status;
             if (status === 'war') {
-                if (r > -25) next = 'neutral';
-            } else if (r < -65) next = 'war';
-            else if (r < -35) next = 'rival';
-            else if (r > 55) next = 'allied';
-            else if (status !== 'allied' || r < 35) next = 'neutral';
+                if (r > -20) next = 'neutral';
+            } else if (r < -50) next = 'war';
+            else if (r < -30) next = 'rival';
+            else if (r > 40) next = 'allied';
+            else if (status !== 'allied' || r < 30) next = 'neutral';
             if (next !== status) {
                 d.status[key] = next;
                 const na = factionName(sim, a);
