@@ -1,15 +1,13 @@
+html,
 body {
     margin: 0;
     padding: 0;
-    color: rgba(255, 255, 255, 0.87);
-    background-color: #0f0f0f;
+    overflow: hidden;
+    background-color: #0b0f1a;
 }
 
 #app {
-    width: 100%;
+    width: 100vw;
     height: 100vh;
     overflow: hidden;
-    display: flex;
-    justify-content: center;
-    align-items: center;
 }

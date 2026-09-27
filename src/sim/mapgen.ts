@@ -145,6 +145,11 @@ export const generateWorld = (seed: number, size: number): GeneratedWorld => {
     const villages: Site[] = [];
     const bandits: Site[] = [];
 
+    // Independent villages are placed first because they need the most room.
+    for (let i = 0; i < 3; i++) {
+        const s = findSite({ minR: 28, maxR: 62, spacing: 24, clear: 5 }) ?? findSite({ minR: 22, maxR: 62, spacing: 16, clear: 4 });
+        if (s) villages.push(s);
+    }
     const first = findSite({ minR: 13, maxR: 20, spacing: 10, clear: 4 });
     if (first) camps.push(first);
     for (const biome of rng.shuffle<BiomeId>(['snow', 'desert', 'forest', 'grassland'])) {
@@ -155,10 +160,6 @@ export const generateWorld = (seed: number, size: number): GeneratedWorld => {
         const s = findSite({ minR: 18, maxR: 58, spacing: 18, clear: 4 });
         if (!s) break;
         camps.push(s);
-    }
-    for (let i = 0; i < 3; i++) {
-        const s = findSite({ minR: 30, maxR: 60, spacing: 22, clear: 6 });
-        if (s) villages.push(s);
     }
     for (let i = 0; i < 4; i++) {
         const s = findSite({ minR: 24, maxR: 60, spacing: 18, clear: 3 });
@@ -194,7 +195,7 @@ export const generateWorld = (seed: number, size: number): GeneratedWorld => {
             const n = (treeNoise(x / 9, y / 9) + 1) / 2;
             const density = b === 'forest' ? 0.62 : b === 'grassland' ? 0.14 : b === 'snow' ? 0.3 : 0.03;
             if (n > 1 - density && rng.chance(0.75)) {
-                trees.push({ x, y, variant: b === 'snow' ? rng.int(2, 3) : rng.int(0, 3) });
+                trees.push({ x, y, variant: b === 'snow' ? rng.int(0, 1) : rng.int(0, 3) });
                 taken[idx(map, x, y)] = 1;
             }
         }

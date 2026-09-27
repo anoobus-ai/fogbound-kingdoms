@@ -23,7 +23,7 @@ import {
 import { placeFoundation, queueUnit, startResearch } from './buildings';
 import { distToBuilding } from './combat';
 import { appointLeader, joinKingdom, reactToPlayerProject, resolveProposal } from './politics';
-import { receiveDiplomat } from './diplomacy';
+import { receiveDiplomat, setStatus } from './diplomacy';
 import { canTrade } from './trade';
 import { setIdle } from './units';
 import { MERCHANT_DEALS } from './world';
@@ -296,6 +296,15 @@ export const talkAction = (sim: Sim, villageId: number, action: MessengerOrder |
     }
     receiveDiplomat(sim, v, action, KINGDOM);
     return null;
+};
+
+export const declareWar = (sim: Sim, villageId: number) => {
+    const v = sim.village(villageId);
+    if (!v || v.faction === KINGDOM) return;
+    setStatus(sim, KINGDOM, v.faction, 'war', -60);
+    for (const o of sim.state.villages) {
+        if (o.faction !== KINGDOM && o.faction !== v.faction && sim.friendlyFactions(o.faction, v.faction)) o.loyalty = Math.max(0, o.loyalty - 15);
+    }
 };
 
 export const setAgenda = (sim: Sim, agenda: AgendaId[]) => {

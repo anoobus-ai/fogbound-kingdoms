@@ -81,7 +81,8 @@ const threatNear = (sim: Sim, v: Village): number => {
         if (b.faction === BANDIT && Math.hypot(b.x - v.cx, b.y - v.cy) < 28) threat += 6;
     }
     for (const u of sim.spatial.query(v.cx, v.cy, 14)) {
-        if (u.faction === WILD && u.kind !== 'sheep') threat += 4;
+        if (u.kind === 'sheep') continue;
+        if (u.faction === WILD) threat += 4;
         else if (u.faction !== v.faction && sim.hostileFactions(u.faction, v.faction)) threat += 5;
     }
     for (const [key, status] of Object.entries(sim.state.diplomacy.status)) {
@@ -104,6 +105,9 @@ const waterNear = (sim: Sim, v: Village): boolean => {
 
 const clamp = (n: number) => Math.max(0, Math.min(100, n));
 
+const treesNear = (sim: Sim, v: Village): number =>
+    sim.state.resources.reduce((n, r) => (r.kind === 'tree' && Math.abs(r.x - v.cx) < 10 && Math.abs(r.y - v.cy) < 10 ? n + 1 : n), 0);
+
 export const computeNeeds = (sim: Sim, v: Village, pop: number) => {
     const built = sim.state.buildings.filter((b) => b.villageId === v.id && b.built);
     const sum = (need: NeedId) => built.reduce((s, b) => s + (BUILDINGS[b.kind].satisfies[need] ?? 0), 0);
@@ -115,10 +119,10 @@ export const computeNeeds = (sim: Sim, v: Village, pop: number) => {
     v.needs.food = clamp((v.stock.food / daily) * 22 + sum('food'));
     v.needs.shelter = clamp(45 + (cap - pop) * 11);
     v.needs.safety = clamp(45 + sum('safety') + soldiers * 4 - threatNear(sim, v));
-    v.needs.water = clamp((waterNear(sim, v) ? 55 : v.biome === 'desert' ? 5 : 30) + sum('water'));
-    v.needs.faith = clamp(30 + sum('faith'));
-    v.needs.wealth = clamp(20 + Math.min(35, v.stock.gold / 8) + sum('wealth'));
-    v.needs.beauty = clamp(30 + sum('beauty'));
+    v.needs.water = clamp((waterNear(sim, v) ? 60 : v.biome === 'desert' ? 5 : 40) + sum('water'));
+    v.needs.faith = clamp(38 + sum('faith'));
+    v.needs.wealth = clamp(28 + Math.min(35, v.stock.gold / 8) + sum('wealth'));
+    v.needs.beauty = clamp(38 + sum('beauty') + Math.min(15, treesNear(sim, v) / 3));
     const warmthBase = winter ? (v.biome === 'snow' ? 10 : 45) : v.biome === 'snow' ? 45 : 80;
     v.needs.warmth = clamp(warmthBase + sum('warmth') - Math.max(0, pop - cap) * 5);
 

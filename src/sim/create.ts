@@ -1,4 +1,4 @@
-import { MAP_SIZE } from '../data/balance';
+import { DAY_SECONDS, MAP_SIZE } from '../data/balance';
 import { generateWorld, type Site } from './mapgen';
 import { makeCulture, makePerson, villageName } from './people';
 import { Rng } from './rng';
@@ -64,7 +64,7 @@ export const newGame = (seed: number): Sim => {
     const state: GameState = {
         version: 1,
         seed,
-        time: 0,
+        time: DAY_SECONDS * 0.15,
         nextId: 1,
         rngState: seed ^ 0x5bd1e995,
         map: world.map,
