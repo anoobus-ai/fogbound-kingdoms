@@ -1,0 +1,22 @@
+{
+  "name": "fogbound-kingdoms",
+  "description": "A fog-of-war open-world RTS about growing villages into a kingdom",
+  "version": "0.1.0",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite --config vite/config.dev.mjs",
+    "build": "tsc --noEmit && vite build --config vite/config.prod.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "assets": "node scripts/import-assets.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
+  },
+  "dependencies": {
+    "phaser": "^4.2.1",
+    "simplex-noise": "^4.0.3"
+  }
+}

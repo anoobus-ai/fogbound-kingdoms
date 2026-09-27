@@ -1,0 +1,131 @@
+import { describe, expect, it } from 'vitest';
+import { generateWorld } from './mapgen';
+import { Pathfinder } from './pathfinding';
+import { newGame } from './create';
+import { deserialize, serialize } from './save';
+import { KINGDOM } from './types';
+import { joinKingdom, judge, resolveProposal, startProposal } from './politics';
+import { VOTE_THRESHOLD } from '../data/balance';
+import { makePerson } from './people';
+import { issueSmartCommand } from './commands';
+
+const run = (sim: ReturnType<typeof newGame>, seconds: number, dt = 1 / 20) => {
+    for (let t = 0; t < seconds; t += dt) sim.update(dt);
+};
+
+describe('map generation', () => {
+    it('is deterministic for a seed', () => {
+        const a = generateWorld(42, 96);
+        const b = generateWorld(42, 96);
+        expect(Array.from(a.map.ground)).toEqual(Array.from(b.map.ground));
+        expect(a.camps).toEqual(b.camps);
+    });
+
+    it('produces camps, villages and a walkable center', () => {
+        for (const seed of [1, 7, 99, 1234]) {
+            const w = generateWorld(seed, 128);
+            expect(w.camps.length).toBeGreaterThanOrEqual(4);
+            expect(w.villages.length).toBeGreaterThanOrEqual(2);
+            const i = w.center.y * 128 + w.center.x;
+            expect(w.map.ground[i]).not.toBe(0);
+            expect(w.map.elev[i]).toBe(0);
+        }
+    });
+});
+
+describe('pathfinding', () => {
+    it('walks around a wall', () => {
+        const pf = new Pathfinder(10, 10);
+        const wall = (x: number, y: number) => !(x === 5 && y < 8);
+        const path = pf.find(1, 1, { x: 8, y: 1, w: 1, h: 1 }, wall);
+        expect(path.length).toBeGreaterThan(0);
+        const last = path[path.length - 1];
+        expect(Math.floor(last.x)).toBe(8);
+        expect(path.every((p) => wall(Math.floor(p.x), Math.floor(p.y)))).toBe(true);
+    });
+});
+
+describe('game simulation', () => {
+    it('runs several minutes without errors and keeps the explorer alive', () => {
+        const sim = newGame(2024);
+        run(sim, 240);
+        expect(sim.state.time).toBeGreaterThan(239);
+        expect(sim.state.units.length).toBeGreaterThan(20);
+        expect(sim.state.explored.some((e) => e === 1)).toBe(true);
+    });
+
+    it('saves and loads the whole world', () => {
+        const sim = newGame(77);
+        run(sim, 20);
+        const copy = deserialize(serialize(sim.state));
+        expect(copy.state.units.length).toBe(sim.state.units.length);
+        expect(copy.state.buildings.length).toBe(sim.state.buildings.length);
+        expect(Array.from(copy.state.map.block)).toEqual(Array.from(sim.state.map.block));
+        run(copy, 10);
+    });
+
+    it('lets a camp join and grow into a village with a town center', () => {
+        const sim = newGame(5);
+        const camp = sim.state.villages.find((v) => v.stage === 'camp')!;
+        joinKingdom(sim, camp, 'food');
+        expect(camp.faction).toBe(KINGDOM);
+        expect(camp.stage).toBe('village');
+        run(sim, 120);
+        const tc = sim.state.buildings.find((b) => b.villageId === camp.id && b.kind === 'townCenter');
+        expect(tc).toBeDefined();
+        expect(tc!.progress).toBeGreaterThan(0);
+    });
+
+    it('lets a warrior beat an archer and a lancer beat a warrior', () => {
+        const sim = newGame(3);
+        sim.state.kingdom.explorerDeadUntil = 1e9;
+        sim.removeUnit(sim.explorer()!);
+        const center = sim.state.kingdom.respawn;
+        const duel = (a: 'warrior' | 'lancer' | 'archer', b: 'warrior' | 'lancer' | 'archer') => {
+            const ua = sim.spawnUnit(a, 'v9001', null, center.x - 2.5, center.y);
+            const ub = sim.spawnUnit(b, 'bandit', null, center.x + 2.5, center.y);
+            ua.order = { type: 'attack', targetId: ub.id, targetIsBuilding: false };
+            ub.order = { type: 'attack', targetId: ua.id, targetIsBuilding: false };
+            for (let i = 0; i < 20 * 60 && ua.hp > 0 && ub.hp > 0; i++) sim.update(1 / 20);
+            const winner = ua.hp > 0 ? a : b;
+            if (ua.hp > 0) sim.removeUnit(ua);
+            if (ub.hp > 0) sim.removeUnit(ub);
+            return winner;
+        };
+        expect(duel('warrior', 'archer')).toBe('warrior');
+        expect(duel('lancer', 'warrior')).toBe('lancer');
+        expect(duel('archer', 'lancer')).toBe('archer');
+    });
+
+    it('exiles a player who ignores the people and pushes an unpopular agenda', () => {
+        const sim = newGame(11);
+        const camp = sim.state.villages.find((v) => v.stage === 'camp')!;
+        joinKingdom(sim, camp, null);
+        for (let i = 0; i < VOTE_THRESHOLD; i++) {
+            const p = makePerson(sim.rng, ['frugal']);
+            p.traits = ['frugal', 'peaceful'];
+            p.mood = 20;
+            sim.spawnUnit('pawn', KINGDOM, camp.id, camp.cx + 1, camp.cy + 2, p);
+        }
+        sim.state.kingdom.agenda = ['grandeur', 'military'];
+        startProposal(sim, camp, { type: 'build', building: 'granary' });
+        camp.playerPresent = true;
+        resolveProposal(sim, camp, false, 'player');
+        camp.loyalty = 15;
+        camp.unrest = 70;
+        const exiled = judge(sim, camp);
+        expect(exiled).toBe(true);
+        expect(camp.faction).not.toBe(KINGDOM);
+        expect(sim.status(KINGDOM, camp.faction)).toBe('war');
+        expect(sim.state.requests.some((r) => r.type === 'exiled')).toBe(true);
+    });
+
+    it('sends villagers to chop a tree on right-click', () => {
+        const sim = newGame(8);
+        const explorer = sim.explorer()!;
+        const pawn = sim.spawnUnit('pawn', KINGDOM, null, explorer.x, explorer.y, makePerson(sim.rng));
+        const tree = sim.state.resources.find((r) => r.kind === 'tree')!;
+        issueSmartCommand(sim, [pawn], tree.x + 0.5, tree.y + 0.5);
+        expect(pawn.order.type).toBe('gather');
+    });
+});
