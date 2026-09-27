@@ -8,6 +8,7 @@ import { joinKingdom, judge, resolveProposal, startProposal } from './politics';
 import { VOTE_THRESHOLD } from '../data/balance';
 import { makePerson } from './people';
 import { issueSmartCommand } from './commands';
+import { killUnit } from './combat';
 
 const run = (sim: ReturnType<typeof newGame>, seconds: number, dt = 1 / 20) => {
     for (let t = 0; t < seconds; t += dt) sim.update(dt);
@@ -118,6 +119,37 @@ describe('game simulation', () => {
         expect(camp.faction).not.toBe(KINGDOM);
         expect(sim.status(KINGDOM, camp.faction)).toBe('war');
         expect(sim.state.requests.some((r) => r.type === 'exiled')).toBe(true);
+    });
+
+    it('respawns the explorer at the last friendly village he visited', () => {
+        const sim = newGame(21);
+        const camp = sim.state.villages.find((v) => v.stage === 'camp')!;
+        joinKingdom(sim, camp, null);
+        const e = sim.explorer()!;
+        e.x = camp.cx + 1;
+        e.y = camp.cy + 2;
+        run(sim, 60);
+        const tc = sim.townCenter(camp)!;
+        expect(tc.built).toBe(true);
+        expect(sim.state.kingdom.respawnVillageId).toBe(camp.id);
+        sim.explorer()!.x = 5;
+        killUnit(sim, sim.explorer()!, null);
+        expect(sim.explorer()).toBeUndefined();
+        run(sim, 11);
+        const back = sim.explorer()!;
+        expect(back).toBeDefined();
+        expect(Math.hypot(back.x - camp.cx, back.y - camp.cy)).toBeLessThan(8);
+    });
+
+    it('lets a monk convert an enemy soldier', () => {
+        const sim = newGame(4);
+        const c = sim.state.kingdom.respawn;
+        const monk = sim.spawnUnit('monk', KINGDOM, null, c.x, c.y);
+        const enemy = sim.spawnUnit('warrior', 'v777', null, c.x + 2, c.y);
+        enemy.stance = 'hold';
+        monk.order = { type: 'convert', targetId: enemy.id, progress: 0 };
+        run(sim, 7);
+        expect(enemy.faction).toBe(KINGDOM);
     });
 
     it('sends villagers to chop a tree on right-click', () => {

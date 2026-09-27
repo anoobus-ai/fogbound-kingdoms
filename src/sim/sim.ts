@@ -260,7 +260,7 @@ export class Sim {
             x,
             y,
             hp: this.maxHp(kind, faction),
-            stance: kind === 'explorer' ? 'aggressive' : 'passive',
+            stance: 'passive',
             order: { type: 'idle' },
             path: [],
             pathTarget: '',

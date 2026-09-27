@@ -412,6 +412,7 @@ h4 {
     min-height: 150px;
     max-height: 46vh;
     overflow-y: auto;
+    overflow-x: hidden;
     display: none;
 }
 
@@ -463,6 +464,7 @@ h4 {
     width: 380px;
     max-height: calc(100vh - 90px);
     overflow-y: auto;
+    overflow-x: hidden;
     display: none;
 }
 
@@ -521,6 +523,7 @@ h4 {
     width: min(640px, 92vw);
     max-height: 86vh;
     overflow-y: auto;
+    overflow-x: hidden;
     position: relative;
 }
 
@@ -531,7 +534,7 @@ h4 {
 .modal .close {
     position: absolute;
     top: -6px;
-    right: -4px;
+    right: 0;
 }
 
 .modal-actions {
