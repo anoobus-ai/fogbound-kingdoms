@@ -25,3 +25,4 @@ dist-ssr
 
 # Tiny Swords art is licensed for use but not redistribution
 public/assets/tiny-swords/
+.vercel
