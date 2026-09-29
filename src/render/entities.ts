@@ -16,8 +16,12 @@ import {
 import { autotile, COLS, DEPTH, ROW } from './terrain';
 
 const BAR_DEPTH = DEPTH.fog - 10;
-/** Where the frame sits inside SmallBar_Base.png, and how big the packed frame is. */
-const BAR_FRAME = { cap: 15, mid: 64, h: 19, top: 22, scale: 0.6 } as const;
+/**
+ * SmallBar_Base.png is three pieces with gaps. `slot*` is the open interior of the
+ * packed frame, in source pixels, where the coloured fill has to sit.
+ * The sheet paints that interior opaque navy, so the fill is drawn over it.
+ */
+const BAR_FRAME = { cap: 15, mid: 64, h: 19, top: 22, scale: 0.6, slotX: 6, slotY: 5, slotH: 9 } as const;
 
 interface UnitView {
     sprite: Phaser.GameObjects.Sprite;
@@ -59,7 +63,7 @@ export class EntityRenderer {
     private framesUsed = 0;
 
     constructor(private readonly scene: Phaser.Scene, private sim: Sim) {
-        this.bars = scene.add.graphics().setDepth(BAR_DEPTH);
+        this.bars = scene.add.graphics().setDepth(BAR_DEPTH + 2);
         this.rings = scene.add.graphics().setDepth(DEPTH.decals + 1);
         this.buildBarFrame();
     }
@@ -580,25 +584,25 @@ export class EntityRenderer {
         return 0xe8c547;
     }
 
-    /** Health bar: a coloured fill under the Tiny Swords bar frame. */
+    /** Health bar: coloured fill in the slot of the Tiny Swords bar frame. */
     private bar(g: Phaser.GameObjects.Graphics, cx: number, y: number, w: number, frac: number, color: number) {
-        const { scale, h, cap } = BAR_FRAME;
-        const frameH = h * scale;
-        const inset = cap * scale * 0.55;
+        const { scale, h, cap, slotX, slotY, slotH } = BAR_FRAME;
+        const pad = slotX * scale;
         const x = cx - w / 2;
-        const innerW = w - inset * 2;
-        const fillY = y + frameH * 0.3;
-        const fillH = frameH * 0.42;
+        const innerW = Math.max(0, w - pad * 2);
+        const fillY = y + slotY * scale;
+        const fillH = slotH * scale;
+        const fw = Math.max(0, Math.min(1, frac)) * innerW;
         g.fillStyle(0x1b1410, 1);
-        g.fillRect(x + inset, fillY, innerW, fillH);
+        g.fillRect(x + pad, fillY, innerW, fillH);
         g.fillStyle(color, 1);
-        g.fillRect(x + inset, fillY, Math.max(0, Math.min(1, frac)) * innerW, fillH);
-        g.fillStyle(0xffffff, 0.3);
-        g.fillRect(x + inset, fillY, Math.max(0, Math.min(1, frac)) * innerW, 1.5);
+        g.fillRect(x + pad, fillY, fw, fillH);
+        g.fillStyle(0xffffff, 0.35);
+        g.fillRect(x + pad, fillY, fw, Math.max(1, fillH * 0.28));
 
         let frame = this.frames[this.framesUsed];
         if (!frame) {
-            frame = this.scene.add.nineslice(0, 0, 'hp-frame', undefined, 100, h, cap, cap, 0, 0).setOrigin(0, 0).setScale(scale).setDepth(BAR_DEPTH + 1);
+            frame = this.scene.add.nineslice(0, 0, 'hp-frame', undefined, 100, h, cap, cap, 0, 0).setOrigin(0, 0).setScale(scale).setDepth(BAR_DEPTH);
             this.frames.push(frame);
         }
         this.framesUsed++;
