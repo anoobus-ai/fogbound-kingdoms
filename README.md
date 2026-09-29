@@ -26,6 +26,21 @@ The Tiny Swords license does not allow sharing the art files, so they are not st
    **Tiny Swords (Free Pack).zip** and **TS_old version_CC0 Licensed**.
 2. Leave them in your Downloads folder and run `npm run assets`.
 
+## Publishing it
+
+The live game is at <https://fogbound-kingdoms.vercel.app>.
+
+Because the art cannot live on `main`, the `deploy` branch is `main` plus one commit that adds
+`public/assets/tiny-swords`. It is pushed only to the private Cursor repo, never to GitHub:
+
+```bash
+git checkout deploy && git merge main   # bring in the latest code
+git push cursor deploy:main             # back it up on Cursor
+npx vercel deploy --prod                # publish
+git checkout main
+git checkout deploy -- public/assets/tiny-swords && git reset   # keep the art for local dev
+```
+
 ## Controls
 
 | Action | How |
