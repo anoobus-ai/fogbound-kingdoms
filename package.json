@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build --config vite/config.prod.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "assets": "node scripts/import-assets.mjs"
+    "assets": "node scripts/import-assets.mjs",
+    "deploy": "node scripts/publish.mjs"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

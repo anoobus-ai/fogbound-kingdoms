@@ -28,18 +28,19 @@ The Tiny Swords license does not allow sharing the art files, so they are not st
 
 ## Publishing it
 
-The live game is at <https://fogbound-kingdoms.vercel.app>.
-
-Because the art cannot live on `main`, the `deploy` branch is `main` plus one commit that adds
-`public/assets/tiny-swords`. It is pushed only to the private Cursor repo, never to GitHub:
+The live game is at <https://fogbound-kingdoms.vercel.app>. To update it:
 
 ```bash
-git checkout deploy && git merge main   # bring in the latest code
-git push cursor deploy:main             # back it up on Cursor
-npx vercel deploy --prod                # publish
-git checkout main
-git checkout deploy -- public/assets/tiny-swords && git reset   # keep the art for local dev
+npm run deploy
 ```
+
+That builds the game, copies the build to a scratch folder outside the repo, and uploads it from
+there. The detour is needed because the Vercel CLI skips everything git ignores, which includes the
+art — uploading straight from the repo produces a game with no graphics.
+
+A copy of the art is parked on the `art-backup` branch of the private Cursor repo in case the itch.io
+download ever disappears. Do not check that branch out here; fetch it into a separate folder if you
+need it, so switching branches can never delete your working copy of the art.
 
 ## Controls
 
