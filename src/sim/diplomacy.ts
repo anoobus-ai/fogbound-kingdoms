@@ -3,7 +3,7 @@ import { TRAITS, TRAIT_CONFLICTS } from '../data/traits';
 import { UNITS } from '../data/units';
 import type { Sim } from './sim';
 import { pairKey } from './state';
-import { KINGDOM, type DiplomacyStatus, type FactionId, type MessengerOrder, type TraitId, type Village } from './types';
+import { KINGDOM, type DiplomacyStatus, type FactionId, type MessengerOrder, type Stance, type TraitId, type UnitKind, type Village } from './types';
 import { factionName, joinKingdom } from './politics';
 
 const lastTick = new WeakMap<Sim, number>();
@@ -27,6 +27,7 @@ export const setStatus = (sim: Sim, a: FactionId, b: FactionId, status: Diplomac
             case 'war':
                 sim.log(`War! ${name} and your kingdom are now at war.`, 'bad');
                 sim.emit({ type: 'sound', id: 'horn' });
+                armKingdomForWar(sim);
                 break;
             case 'allied':
                 sim.log(`${name} is now your ally.`, 'good');
@@ -39,6 +40,29 @@ export const setStatus = (sim: Sim, a: FactionId, b: FactionId, status: Diplomac
                 throw new Error(`Unknown status ${String(never)}`);
             }
         }
+    }
+};
+
+const answersToWar = (kind: UnitKind): boolean => {
+    const cls = UNITS[kind].unitClass;
+    return cls === 'soldier' || cls === 'hero';
+};
+
+/** True while your kingdom is at war with anyone on the map. */
+export const kingdomAtWar = (sim: Sim): boolean =>
+    Object.entries(sim.state.diplomacy.status).some(([key, status]) => status === 'war' && key.split('|').includes(KINGDOM));
+
+/** Soldiers and the hero attack on sight during a war. Everyone else still only fights back. */
+export const initialStance = (sim: Sim, faction: FactionId, kind: UnitKind): Stance => {
+    if (UNITS[kind].unitClass === 'bandit' || kind === 'wolf') return 'aggressive';
+    if (faction === KINGDOM && kingdomAtWar(sim) && answersToWar(kind)) return 'aggressive';
+    return 'passive';
+};
+
+/** Passive soldiers and the hero switch to attack-on-sight when a war begins. Hold and a chosen passive stay put until the next war. */
+export const armKingdomForWar = (sim: Sim) => {
+    for (const u of sim.state.units) {
+        if (u.faction === KINGDOM && u.stance === 'passive' && answersToWar(u.kind)) u.stance = 'aggressive';
     }
 };
 

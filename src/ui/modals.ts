@@ -394,6 +394,7 @@ const helpHtml = (): string => `${close}<h2>How to play Fogbound Kingdoms</h2>
     <h4>The big ideas</h4>
     <ul>
         <li><b>Presence:</b> you directly control villages near your explorer. Far villages get orders by messenger, and their leader may refuse.</li>
+        <li><b>War:</b> while your kingdom is at war, your soldiers and your hero attack enemies they can see. Villagers still only fight back. The unit card’s More button can change that.</li>
         <li><b>Leaders:</b> when you leave a village, someone rules in your place. Their personality decides what they build.</li>
         <li><b>Votes:</b> at ${VOTE_THRESHOLD} people, villagers vote on decisions. You have the final say, but ignoring them breeds unrest and grudges.</li>
         <li><b>Exile:</b> return to a village that disagrees with you (your agenda, broken promises, ignored votes, expensive projects) and they may throw you out.
