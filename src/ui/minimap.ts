@@ -95,7 +95,8 @@ export class Minimap {
             if (u.faction === WILD) ctx.fillStyle = u.kind === 'sheep' ? '#ffffff' : '#a0522d';
             else if (u.faction === BANDIT) ctx.fillStyle = '#ff2020';
             else ctx.fillStyle = colorOf(sim, u.faction);
-            ctx.fillRect(Math.floor(u.x), Math.floor(u.y), u.kind === 'explorer' ? 3 : 2, u.kind === 'explorer' ? 3 : 2);
+            if (u.kind === 'explorer') ctx.fillStyle = '#ffd34d';
+            ctx.fillRect(Math.floor(u.x) - (u.kind === 'explorer' ? 1 : 0), Math.floor(u.y) - (u.kind === 'explorer' ? 1 : 0), u.kind === 'explorer' ? 4 : 2, u.kind === 'explorer' ? 4 : 2);
         }
         const e = sim.explorer();
         if (e) {

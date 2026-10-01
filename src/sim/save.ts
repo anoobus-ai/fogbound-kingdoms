@@ -41,6 +41,8 @@ export const deserialize = (json: string): Sim => {
         road: decodeBytes(m.road)
     };
     const state: GameState = { ...raw, map, explored: decodeBytes(raw.explored) };
+    if (typeof state.kingdom.heroName !== 'string') state.kingdom.heroName = '';
+    if (typeof state.settings.pauseOnPopup !== 'boolean') state.settings.pauseOnPopup = true;
     for (const b of state.buildings) {
         for (let y = b.y; y < b.y + b.h; y++) for (let x = b.x; x < b.x + b.w; x++) map.block[y * map.w + x] = b.id;
     }

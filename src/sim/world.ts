@@ -20,7 +20,7 @@ export const updateWorld = (sim: Sim, _dt: number) => {
     if (!sim.explorer() && now >= k.explorerDeadUntil) {
         const e = sim.spawnUnit('explorer', KINGDOM, null, k.respawn.x, k.respawn.y);
         k.explorerId = e.id;
-        sim.log('Your explorer has returned.', 'good', e);
+        sim.log(`${sim.heroName()} has returned.`, 'good', e);
     }
 
     for (const r of [...s.resources]) {

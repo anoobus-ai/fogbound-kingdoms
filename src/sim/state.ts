@@ -14,6 +14,8 @@ import type {
 
 export interface KingdomState {
     explorerId: number;
+    /** Chosen by the player. Empty means the default, "Explorer". */
+    heroName: string;
     explorerDeadUntil: number;
     respawn: Point;
     respawnVillageId: number | null;
@@ -37,6 +39,8 @@ export interface WorldClock {
 export interface Settings {
     /** When on, enemy units are only shown while something of yours can see them. */
     sightFog: boolean;
+    /** When on, time stops while a message popup is open. */
+    pauseOnPopup: boolean;
     musicVolume: number;
     sfxVolume: number;
 }

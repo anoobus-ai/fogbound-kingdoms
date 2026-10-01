@@ -96,7 +96,7 @@ export const killUnit = (sim: Sim, u: Unit, killer: Unit | null) => {
 
     if (u.kind === 'explorer') {
         sim.state.kingdom.explorerDeadUntil = sim.state.time + EXPLORER_RESPAWN;
-        sim.log('Your explorer has fallen! He will return shortly.', 'bad', u);
+        sim.log(`${sim.heroName()} has fallen and will return shortly.`, 'bad', u);
     } else if (u.person && u.villageId !== null) {
         const v = sim.village(u.villageId);
         if (v) {

@@ -1,4 +1,4 @@
-import { freeUrl } from '../render/assets';
+import { freeUrl, oldUrl } from '../render/assets';
 import type { ResourceType, Stock, TeamColor, UnitKind } from '../sim/types';
 
 export const esc = (s: string): string =>
@@ -24,6 +24,10 @@ export const ICONS = {
 
 export const avatarUrl = (n: number): string => freeUrl(`${UI}Human Avatars/Avatars_${String(n).padStart(2, '0')}.png`);
 
+/** Bust portrait. The sheet has a lot of empty margin, so the frame crops in on the face. */
+export const personAvatar = (n: number, small = false, title = ''): string =>
+    `<span class="avatar${small ? ' sm' : ''}"${title ? ` title="${esc(title)}"` : ''}><img src="${avatarUrl(n)}" alt=""></span>`;
+
 export const icon = (key: keyof typeof ICONS, cls = 'ico'): string => `<img class="${cls}" src="${ICONS[key]}" alt="${key}">`;
 
 export const resIcon = (r: ResourceType): string => icon(r);
@@ -39,7 +43,7 @@ export const unitPortraitUrl = (kind: UnitKind, color: TeamColor): string => {
     const u = `Units/${color} Units/`;
     switch (kind) {
         case 'explorer':
-            return freeUrl('Units/Blue Units/Warrior/Warrior_Idle.png');
+            return freeUrl('Units/Yellow Units/Warrior/Warrior_Idle.png');
         case 'warrior':
             return freeUrl(`${u}Warrior/Warrior_Idle.png`);
         case 'archer':
@@ -78,7 +82,7 @@ export const unitPortraitUrl = (kind: UnitKind, color: TeamColor): string => {
 export const unitPortrait = (kind: UnitKind, color: TeamColor, size = 64): string => {
     const lancer = kind === 'lancer';
     const pixel = kind === 'wolf' || kind === 'bear';
-    const zoom = pixel ? 1 : lancer ? 2.4 : kind === 'goblinBarrel' ? 1.3 : 2;
+    const zoom = pixel ? 1 : kind === 'explorer' ? 2.7 : lancer ? 2.4 : kind === 'goblinBarrel' ? 1.3 : 2;
     const style = pixel
         ? `background-image:url('${unitPortraitUrl(kind, color)}');background-size:contain;background-repeat:no-repeat;background-position:center;image-rendering:pixelated`
         : `background-image:url('${unitPortraitUrl(kind, color)}');background-size:auto ${size * zoom}px;background-position:${-(size * (zoom - 1)) / 2}px ${-(size * (zoom - 1)) / 2 - size * 0.08}px;background-repeat:no-repeat`;
@@ -116,12 +120,59 @@ const compactNineSlice = (url: string, cut: number, mid: [number, number], end: 
         img.src = url;
     });
 
+const loadImage = (url: string): Promise<HTMLImageElement | null> =>
+    new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = url;
+    });
+
+/**
+ * Turns the vertical banner illustration into a 9-slice scroll:
+ * rolled caps stay fixed, the parchment center stretches.
+ * Slice is 36px top, 26px sides, 30px bottom.
+ */
+const scrollNineSlice = (img: HTMLImageElement): string => {
+    const corner = 26;
+    const topH = 36;
+    const botH = 30;
+    const mid = 24;
+    const srcX = 36;
+    const srcW = 120;
+    const W = corner * 2 + mid;
+    const H = topH + mid + botH;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const ctx = c.getContext('2d');
+    if (!ctx) return '';
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#cdc69a';
+    ctx.fillRect(12, topH - 4, W - 24, mid + 8);
+    const drawBar = (sy: number, sh: number, dy: number, dh: number) => {
+        ctx.drawImage(img, srcX, sy, corner, sh, 0, dy, corner, dh);
+        ctx.drawImage(img, srcX + Math.floor(srcW / 2) - 2, sy, 4, sh, corner, dy, mid, dh);
+        ctx.drawImage(img, srcX + srcW - corner, sy, corner, sh, corner + mid, dy, corner, dh);
+    };
+    drawBar(30, topH, 0, topH);
+    drawBar(132, botH, topH + mid, botH);
+    ctx.drawImage(img, 47, 80, 5, 12, 11, topH, 5, mid);
+    ctx.drawImage(img, 140, 80, 5, 12, W - 16, topH, 5, mid);
+    return c.toDataURL();
+};
+
 export const installNineSlices = async () => {
     const root = document.documentElement.style;
     const set = async (name: string, path: string, cut: number, mid: [number, number], end: number) => {
         const data = await compactNineSlice(freeUrl(`${UI}${path}`), cut, mid, end);
         if (data) root.setProperty(name, `url(${data})`);
     };
+    const scrollPromise = loadImage(oldUrl('UI/Banners/Banner_Vertical.png')).then((img) => {
+        if (!img) return;
+        const data = scrollNineSlice(img);
+        if (data) root.setProperty('--scroll', `url(${data})`);
+    });
     await Promise.all([
         set('--paper', 'Papers/RegularPaper.png', 64, [128, 192], 320),
         set('--paper-special', 'Papers/SpecialPaper.png', 64, [128, 192], 320),
@@ -130,8 +181,12 @@ export const installNineSlices = async () => {
         set('--btn-blue', 'Buttons/BigBlueButton_Regular.png', 64, [128, 192], 320),
         set('--btn-blue-down', 'Buttons/BigBlueButton_Pressed.png', 64, [128, 192], 320),
         set('--btn-red', 'Buttons/BigRedButton_Regular.png', 64, [128, 192], 320),
-        set('--btn-red-down', 'Buttons/BigRedButton_Pressed.png', 64, [128, 192], 320)
+        set('--btn-red-down', 'Buttons/BigRedButton_Pressed.png', 64, [128, 192], 320),
+        scrollPromise
     ]);
 };
 
+/** Same hotspot as the arrow, so the hand swaps in place instead of jumping to the system pointer. */
 export const cursorCss = (): string => `url('${freeUrl(`${UI}Cursors/Cursor_01.png`)}') 8 4, default`;
+export const handCursorCss = (): string => `url('${freeUrl(`${UI}Cursors/Cursor_02.png`)}') 8 4, pointer`;
+export const denyCursorCss = (): string => `url('${freeUrl(`${UI}Cursors/Cursor_03.png`)}') 31 30, not-allowed`;

@@ -14,7 +14,7 @@ import { popCap, population } from '../sim/buildings';
 import { NEED_IDS, needWeights } from '../sim/villages';
 import { agendaAlignment, factionName } from '../sim/politics';
 import { popularity } from '../sim/people';
-import { avatarUrl, bar, costHtml, esc, icon, moodColor, resIcon, unitPortrait, unrestColor } from './dom';
+import { bar, costHtml, esc, icon, moodColor, personAvatar, resIcon, unitPortrait, unrestColor } from './dom';
 
 export interface PanelState {
     buildTab: Exclude<BuildCategory, 'hidden' | 'core'>;
@@ -149,8 +149,14 @@ const renderOneUnit = (sim: Sim, u: Unit, state: PanelState): string => {
     const color = factionColor(sim, u.faction);
     const village = sim.village(u.villageId);
     const commandable = isCommandable(sim, u);
-    const portrait = u.person ? `<img class="avatar" src="${avatarUrl(u.person.avatar)}">` : unitPortrait(u.kind, color, 60);
-    const title = u.person ? `${esc(u.person.name)} <span class="muted">— ${def.name}${village ? ` of ${esc(village.name)}` : ''}</span>` : def.name;
+    const portrait = u.person ? personAvatar(u.person.avatar) : unitPortrait(u.kind, color, u.kind === 'explorer' ? 76 : 60);
+    const namedHero = u.kind === 'explorer' && !!sim.state.kingdom.heroName?.trim();
+    const title =
+        u.kind === 'explorer'
+            ? `<input id="hero-name" class="hero-name" maxlength="24" value="${esc(sim.heroName())}" placeholder="Name your hero" spellcheck="false" autocomplete="off" aria-label="Your hero's name" title="Click to name your hero">`
+            : u.person
+              ? `${esc(u.person.name)} <span class="muted">— ${def.name}${village ? ` of ${esc(village.name)}` : ''}</span>`
+              : def.name;
     const leader = village && village.leaderId === u.id ? '<span class="chip politics">Leader</span>' : '';
     let extra = '';
     if (u.faction === KINGDOM && !commandable) {
@@ -160,6 +166,7 @@ const renderOneUnit = (sim: Sim, u: Unit, state: PanelState): string => {
         if (u.kind === 'pawn') extra += buildMenu(sim, state);
         if (u.kind === 'monk') extra += '<div class="muted">Right-click an ally to heal them, or an enemy to convert them to your side.</div>';
         if (u.kind === 'explorer') {
+            if (!namedHero) extra += `<div class="muted">Click the name to rename your hero.</div>`;
             extra += `<div class="muted">Your hero: soldiers near him deal 20% more damage. Right-click a camp or village to talk to them. Units within ${COMMAND_RADIUS} tiles obey your orders.</div>`;
             const v = currentVillage(sim);
             if (v) extra += `<button class="btn small" data-action="open-village" data-id="${v.id}">Open ${esc(v.name)}</button>`;
@@ -170,7 +177,8 @@ const renderOneUnit = (sim: Sim, u: Unit, state: PanelState): string => {
     return `<div class="row" style="align-items:flex-start">
         ${portrait}
         <div class="col" style="flex:1">
-            <h3>${title} ${leader}</h3>
+            ${u.kind === 'explorer' ? title : `<h3>${title} ${leader}</h3>`}
+            ${namedHero ? '<div class="muted">Explorer</div>' : ''}
             <div class="row wrap">${relationChip(sim, u.faction)} ${traitChips(u)}</div>
             ${bar((u.hp / sim.maxHp(u.kind)) * 100, '#5fd35a', `Health ${Math.ceil(u.hp)} / ${sim.maxHp(u.kind)}`, 'health')}
             ${u.person ? bar(u.person.mood, moodColor(u.person.mood), `Mood ${Math.round(u.person.mood)}`) : ''}
@@ -331,7 +339,7 @@ export const renderVillage = (sim: Sim, v: Village): string => {
         .sort((a, b) => popularity(b) - popularity(a))
         .map(
             (u) => `<div class="citizen" data-action="select-unit" data-id="${u.id}">
-                <img class="avatar sm" src="${avatarUrl(u.person!.avatar)}">
+                ${personAvatar(u.person!.avatar, true)}
                 <div style="flex:1"><b>${esc(u.person!.name)}</b>${u.id === v.leaderId ? ' <span class="chip politics">Leader</span>' : ''}
                 <span class="muted">${UNITS[u.kind].name} · ${describeOrder(sim, u)}</span><br>${traitChips(u)}</div>
                 <div style="width:60px">${bar(u.person!.mood, moodColor(u.person!.mood), `${Math.round(u.person!.mood)}`)}</div>
@@ -354,7 +362,7 @@ export const renderVillage = (sim: Sim, v: Village): string => {
         <div class="muted">${BIOMES[v.biome].name} — ${esc(BIOMES[v.biome].description)}</div>
         <div class="row wrap">${relationChip(sim, v.faction)} ${v.culture.map((t) => `<span class="chip neutral" title="${esc(TRAITS[t].description)}">${TRAITS[t].name}</span>`).join('')}</div>
         <div class="row" style="margin-top:6px">
-            ${leader?.person ? `<img class="avatar" src="${avatarUrl(leader.person.avatar)}">` : ''}
+            ${leader?.person ? personAvatar(leader.person.avatar) : ''}
             <div class="col" style="flex:1">
                 <b>${leader?.person ? `Leader: ${esc(leader.person.name)}` : 'No leader'}</b>
                 <div>${leader ? traitChips(leader) : ''}</div>

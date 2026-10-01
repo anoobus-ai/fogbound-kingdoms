@@ -14,7 +14,7 @@ import { independentFactions } from '../sim/diplomacy';
 import { popularity } from '../sim/people';
 import { slotInfo } from '../sim/save';
 import { MERCHANT_DEALS } from '../sim/world';
-import { avatarUrl, bar, costHtml, esc, moodColor, unitPortrait, unrestColor } from './dom';
+import { bar, costHtml, esc, moodColor, personAvatar, unitPortrait, unrestColor } from './dom';
 import { cap } from './panels';
 
 export type ModalView =
@@ -42,7 +42,7 @@ export const renderModal = (sim: Sim, m: ModalView): { html: string; cls: string
         case 'request':
             return renderRequest(sim, m.req);
         case 'appoint':
-            return { html: appointHtml(sim, m.villageId, false), cls: 'paper' };
+            return { html: appointHtml(sim, m.villageId, false), cls: 'scroll' };
         case 'messenger':
             return { html: messengerHtml(sim, m.villageId), cls: 'paper' };
         case 'talk':
@@ -69,7 +69,7 @@ export const renderModal = (sim: Sim, m: ModalView): { html: string; cls: string
 const renderRequest = (sim: Sim, req: UiRequest): { html: string; cls: string } => {
     switch (req.type) {
         case 'appointLeader':
-            return { html: appointHtml(sim, req.villageId, true), cls: 'paper' };
+            return { html: appointHtml(sim, req.villageId, true), cls: 'scroll' };
         case 'vote':
             return { html: voteHtml(sim, req.villageId), cls: 'paper' };
         case 'exiled': {
@@ -92,7 +92,7 @@ const renderRequest = (sim: Sim, req: UiRequest): { html: string; cls: string } 
             return {
                 cls: 'paper',
                 html: `${close}<h2>Welcome back to ${esc(v?.name ?? '')}</h2>
-                    ${leader?.person ? `<div class="row"><img class="avatar" src="${avatarUrl(leader.person.avatar)}"><div><b>${esc(leader.person.name)}</b> ruled while you were away.<br>${traitList(leader.person.traits)}</div></div>` : ''}
+                    ${leader?.person ? `<div class="row">${personAvatar(leader.person.avatar)}<div><b>${esc(leader.person.name)}</b> ruled while you were away.<br>${traitList(leader.person.traits)}</div></div>` : ''}
                     <h4>What happened</h4><ul>${req.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
                     <div class="modal-actions"><button class="btn" data-action="close-modal">Well done — keep ruling</button>
                     <button class="btn red" data-action="appoint-open" data-id="${req.villageId}">I disagree — choose a new leader</button></div>
@@ -147,7 +147,7 @@ const appointHtml = (sim: Sim, villageId: number, leaving: boolean): string => {
         .map((u, i) => {
             const p = u.person!;
             const hint = p.traits.includes('stubborn') || p.traits.includes('ambitious') ? 'May ignore the people' : p.traits.includes('loyal') ? 'Follows your orders' : '';
-            return `<tr><td><img class="avatar sm" src="${avatarUrl(p.avatar)}"></td><td><b>${esc(p.name)}</b>${i === 0 ? ' <span class="chip good">People\'s favourite</span>' : ''}${u.id === v.leaderId ? ' <span class="chip politics">Leader</span>' : ''}<br>${traitList(p.traits)}</td>
+            return `<tr><td>${personAvatar(p.avatar, true)}</td><td><b>${esc(p.name)}</b>${i === 0 ? ' <span class="chip good">People\'s favourite</span>' : ''}${u.id === v.leaderId ? ' <span class="chip politics">Leader</span>' : ''}<br>${traitList(p.traits)}</td>
                 <td class="muted">${hint}</td><td><button class="btn small" data-action="appoint" data-id="${v.id}" data-unit="${u.id}">Appoint</button></td></tr>`;
         })
         .join('');
@@ -170,7 +170,7 @@ const talkHtml = (sim: Sim, villageId: number): string => {
     const leader = sim.unitById.get(v.leaderId ?? -1);
     const faces = people
         .slice(0, 8)
-        .map((u) => `<img class="avatar sm" title="${esc(u.person!.name)}: ${u.person!.traits.map((t) => TRAITS[t].name).join(', ')}" src="${avatarUrl(u.person!.avatar)}">`)
+        .map((u) => personAvatar(u.person!.avatar, true, `${u.person!.name}: ${u.person!.traits.map((t) => TRAITS[t].name).join(', ')}`))
         .join('');
     const culture = traitList(v.culture);
     const explorer = sim.explorer();
@@ -266,7 +266,8 @@ const kingdomHtml = (sim: Sim): string => {
         .map((t) => `<span class="chip ${sim.hasTech(t) ? 'good' : 'neutral'}" title="${esc(TECHS[t].description)}">${sim.hasTech(t) ? '✔ ' : ''}${TECHS[t].name}</span>`)
         .join('');
     const agenda = sim.state.kingdom.agenda.map((a) => `<span class="chip politics">${AGENDAS[a].name}</span>`).join('') || '<span class="muted">none chosen</span>';
-    return `${close}<h2>👑 Your Kingdom</h2>
+    const ruler = sim.state.kingdom.heroName?.trim() ? `${esc(sim.heroName())}'s Kingdom` : 'Your Kingdom';
+    return `${close}<h2>👑 ${ruler}</h2>
         ${villages.length ? `<table class="grid"><tr><th>Village</th><th>People</th><th>Happy</th><th>Unrest</th><th>Loyalty</th><th>Leader</th><th>Stores</th><th></th></tr>${rows}</table>` : '<p>You have no villages yet. Explore and talk to the people living in camps.</p>'}
         <h4>Agenda</h4><div>${agenda} <button class="btn small" data-action="open-screen" data-screen="agenda">Change</button></div>
         <h4>Technologies</h4><div class="row wrap">${techs}</div>
@@ -357,6 +358,7 @@ const menuHtml = (sim: Sim): string => {
         <div class="muted">This world's seed is <b>${sim.state.seed}</b> — write it down to play the same map again.</div>
         <h4>Settings</h4>
         <label class="row interactive"><input type="checkbox" id="opt-sightfog" ${st.sightFog ? 'checked' : ''}> Fog of sight: hide enemies you can't currently see</label>
+        <label class="row interactive"><input type="checkbox" id="opt-pausepopup" ${st.pauseOnPopup ? 'checked' : ''}> Pause the world when a message pops up</label>
         <label class="row interactive">Music <input type="range" id="opt-music" min="0" max="1" step="0.05" value="${st.musicVolume}"></label>
         <label class="row interactive">Sounds <input type="range" id="opt-sfx" min="0" max="1" step="0.05" value="${st.sfxVolume}"></label>
         <div class="modal-actions"><button class="btn" data-action="open-screen" data-screen="help">How to play</button></div>`;

@@ -61,6 +61,16 @@
     border-image: var(--paper-special) 64 fill / 26px 22px stretch;
 }
 
+/* Parchment scroll. Rollers are the border; the center stretches. */
+.scroll {
+    border-style: solid;
+    border-width: 36px 26px 30px;
+    border-image: var(--scroll) 36 26 30 fill / 36px 26px 30px stretch;
+    background: #cdc69a;
+    background-clip: padding-box;
+    scrollbar-color: #8a6232 #e6d7b0;
+}
+
 .wood {
     border-style: solid;
     border-width: 34px;
@@ -85,7 +95,7 @@
     text-shadow: 0 1px 0 #1b3550;
     padding: 0 6px;
     min-height: 34px;
-    cursor: pointer;
+    cursor: var(--cursor-hand, pointer);
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -111,7 +121,7 @@
 .btn[disabled],
 .btn.disabled {
     filter: grayscale(1) brightness(0.8);
-    cursor: not-allowed;
+    cursor: var(--cursor-deny, not-allowed);
 }
 
 .btn.small {
@@ -215,17 +225,32 @@
 }
 
 .avatar {
-    width: 56px;
-    height: 56px;
+    position: relative;
+    display: inline-block;
+    width: 68px;
+    height: 68px;
     border-radius: 8px;
     border: 3px solid #6b4a2b;
     background: #d9c49a;
+    overflow: hidden;
     flex-shrink: 0;
+    vertical-align: middle;
+}
+
+.avatar img {
+    position: absolute;
+    width: 148%;
+    height: 148%;
+    left: 50%;
+    top: 46%;
+    max-width: none;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
 }
 
 .avatar.sm {
-    width: 36px;
-    height: 36px;
+    width: 50px;
+    height: 50px;
     border-width: 2px;
 }
 
@@ -340,7 +365,7 @@ h4 {
     max-width: 380px;
     animation: slidein 0.25s ease-out;
     pointer-events: auto;
-    cursor: pointer;
+    cursor: var(--cursor-hand, pointer);
 }
 
 .feed-item.good {
@@ -402,11 +427,21 @@ h4 {
     width: 200px;
     height: 200px;
     image-rendering: pixelated;
-    cursor: pointer;
+    cursor: var(--cursor-hand, pointer);
     border-radius: 4px;
 }
 
 /* ---------- selection panel ---------- */
+/* Wooden command card: metal-capped frame, dark well. Same idea as an AoE / Warcraft command bar. */
+
+.console {
+    border-style: solid;
+    border-width: 22px 18px 26px;
+    border-image: var(--wood) 128 / 22px 18px 26px stretch;
+    background: linear-gradient(180deg, #4a321f 0%, #2a1b12 100%);
+    color: var(--parchment);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+}
 
 #selection {
     position: absolute;
@@ -418,6 +453,51 @@ h4 {
     overflow-y: auto;
     overflow-x: hidden;
     display: none;
+}
+
+#selection .muted {
+    color: #e4d2b0;
+}
+
+#selection h3,
+#selection h4 {
+    color: #fff6df;
+    text-shadow: 0 1px 0 #1a100a;
+}
+
+#selection .hero-name {
+    display: block;
+    width: 100%;
+    max-width: 280px;
+    margin: 0 0 2px;
+    padding: 0 2px 2px;
+    border: none;
+    border-bottom: 1px dashed rgba(255, 211, 77, 0.7);
+    background: transparent;
+    color: #fff6df;
+    font: 17px Georgia, 'Times New Roman', serif;
+    text-shadow: 0 1px 0 #1a100a;
+    user-select: text;
+    cursor: text;
+}
+
+#selection .hero-name:hover,
+#selection .hero-name:focus {
+    outline: none;
+    border-bottom-style: solid;
+    border-bottom-color: var(--gold);
+    background: rgba(0, 0, 0, 0.28);
+}
+
+#selection .hero-name::placeholder {
+    color: rgba(255, 246, 223, 0.45);
+    font-style: italic;
+}
+
+#selection .portrait,
+#selection .avatar {
+    border-color: #e6c36a;
+    box-shadow: 0 0 0 2px #2a1b12;
 }
 
 #selection.open {
@@ -541,6 +621,11 @@ h4 {
     right: 0;
 }
 
+.modal.scroll .close {
+    top: 0;
+    right: 2px;
+}
+
 .modal-actions {
     display: flex;
     flex-wrap: wrap;
@@ -581,7 +666,7 @@ table.grid th {
     border-radius: 10px;
     padding: 8px;
     background: rgba(255, 255, 255, 0.25);
-    cursor: pointer;
+    cursor: var(--cursor-hand, pointer);
     width: 200px;
 }
 
@@ -625,6 +710,49 @@ table.grid th {
 .status-neutral {
     color: var(--ink-soft);
     font-weight: bold;
+}
+
+/* Small pause medallion. Wood frame matches the command bar; it only shows while a popup has stopped time. */
+#pause-mark {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 3;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 72px;
+    height: 72px;
+    pointer-events: none;
+    border-style: solid;
+    border-width: 18px;
+    border-image: var(--wood) 128 fill / 18px stretch;
+    filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.4));
+    animation: pause-float 2.8s ease-in-out infinite;
+}
+
+#pause-mark.show {
+    display: flex;
+}
+
+.pause-glyph {
+    display: block;
+    shape-rendering: crispEdges;
+    image-rendering: pixelated;
+    background: #2a1b12;
+    border: 2px solid #6b4a2b;
+    border-radius: 3px;
+    padding: 2px;
+}
+
+@keyframes pause-float {
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(4px);
+    }
 }
 
 #hint {

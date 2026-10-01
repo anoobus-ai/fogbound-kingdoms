@@ -74,6 +74,7 @@ export class WorldScene extends Phaser.Scene {
 
         this.setupInput();
         this.ui = new GameUI(this.controller, this, this.sfx);
+        this.controller.selectUnits([e.id]);
         this.controller.addEventListener('sim-changed', () => this.onSimChanged());
         this.game.events.on(Phaser.Core.Events.BLUR, () => (this.pointerInside = false));
         this.input.on('gameout', () => (this.pointerInside = false));
@@ -93,6 +94,13 @@ export class WorldScene extends Phaser.Scene {
 
     startNewGame(seed: number) {
         this.controller.setSim(newGame(seed));
+        const explorer = this.controller.sim.explorer();
+        if (explorer) this.controller.selectUnits([explorer.id]);
+    }
+
+    private isTyping(): boolean {
+        const el = document.activeElement;
+        return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
     }
 
     // ---------- atmosphere ----------
@@ -156,11 +164,16 @@ export class WorldScene extends Phaser.Scene {
         const kb = this.input.keyboard!;
         this.keys = kb.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,SHIFT,CTRL') as Record<string, Phaser.Input.Keyboard.Key>;
         kb.on('keydown-F', () => {
+            if (this.isTyping()) return;
             this.controller.follow = !this.controller.follow;
             this.controller.toast(this.controller.follow ? 'Camera follows your explorer (F to stop).' : 'Camera is free.');
         });
-        kb.on('keydown-SPACE', () => this.centerOnExplorer());
+        kb.on('keydown-SPACE', () => {
+            if (this.isTyping()) return;
+            this.centerOnExplorer();
+        });
         kb.on('keydown-H', () => {
+            if (this.isTyping()) return;
             const e = this.sim.explorer();
             if (e) {
                 this.controller.selectUnits([e.id]);
@@ -168,6 +181,7 @@ export class WorldScene extends Phaser.Scene {
             }
         });
         kb.on('keydown-ESC', () => {
+            if (this.isTyping()) return;
             if (this.controller.placing) this.controller.startPlacing(null);
             else this.controller.clearSelection();
         });
@@ -392,7 +406,7 @@ export class WorldScene extends Phaser.Scene {
             const e = this.sim.explorer();
             if (e) this.cameras.main.centerOn(e.x * TILE, e.y * TILE);
         }
-        this.sim.update(dt);
+        if (!this.ui.simPaused()) this.sim.update(dt);
         this.handleCamera(dt);
         this.terrain.update();
         this.entities.update({

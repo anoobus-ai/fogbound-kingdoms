@@ -24,7 +24,7 @@ import {
     talkAction
 } from '../sim/commands';
 import type { AgendaId, BuildingKind, MessengerOrder, NeedId, ResourceType, Stance, TechId, UnitKind } from '../sim/types';
-import { cursorCss, esc, icon, installNineSlices } from './dom';
+import { cursorCss, denyCursorCss, esc, handCursorCss, icon, installNineSlices } from './dom';
 import { Minimap } from './minimap';
 import { isLive, renderModal, type ModalView } from './modals';
 import { panelVillage, renderSelection, renderTopbar, renderVillage, type PanelState } from './panels';
@@ -33,7 +33,7 @@ type Handler = (el: HTMLElement) => void;
 
 export class GameUI {
     private root: HTMLElement;
-    private els: Record<'topbar' | 'feed' | 'selection' | 'village' | 'modalLayer' | 'modal' | 'toast' | 'hint', HTMLElement>;
+    private els: Record<'topbar' | 'feed' | 'selection' | 'village' | 'modalLayer' | 'modal' | 'toast' | 'hint' | 'pauseMark', HTMLElement>;
     private minimap: Minimap;
     private cache = new Map<string, string>();
     private timer = 0;
@@ -43,9 +43,18 @@ export class GameUI {
     private state: PanelState = { buildTab: 'economy', villagePanelId: null, villagePanelClosed: false };
     private handlers: Record<string, Handler>;
     private seenLog = 0;
+    /** True while the selection panel is being replaced, so a name field blur does not save a half-typed name. */
+    private rewritingSelection = false;
+    /** The saved hero name when the name field was focused, so Escape can revert. */
+    private nameBeforeEdit: string | null = null;
+    /** While false, a selection redraw leaves the name field unfocused (the player clicked away). */
+    private keepHeroFocus = true;
 
     constructor(private readonly c: Controller, private readonly scene: WorldScene, private readonly sound: SoundManager) {
         void installNineSlices();
+        const rootStyle = document.documentElement.style;
+        rootStyle.setProperty('--cursor-hand', handCursorCss());
+        rootStyle.setProperty('--cursor-deny', denyCursorCss());
         document.body.style.cursor = cursorCss();
         this.root = document.getElementById('ui') ?? document.body.appendChild(Object.assign(document.createElement('div'), { id: 'ui' }));
         this.root.innerHTML = `
@@ -61,9 +70,16 @@ export class GameUI {
             <div id="feed"></div>
             <div id="toast"></div>
             <div id="hint"></div>
+            <div id="pause-mark" title="The world is paused">
+                <svg class="pause-glyph" viewBox="0 0 16 16" width="26" height="26" aria-hidden="true">
+                    <g fill="#3b2a1e"><rect x="1" y="1" width="6" height="14"/><rect x="9" y="1" width="6" height="14"/></g>
+                    <g fill="#ffd34d"><rect x="2" y="2" width="4" height="12"/><rect x="10" y="2" width="4" height="12"/></g>
+                    <g fill="#fff4c4"><rect x="2" y="2" width="4" height="2"/><rect x="10" y="2" width="4" height="2"/></g>
+                </svg>
+            </div>
             <div id="minimap-wrap" class="wood interactive"><canvas id="minimap"></canvas></div>
-            <div id="selection" class="paper interactive"></div>
-            <div id="village" class="paper interactive"></div>
+            <div id="selection" class="console interactive"></div>
+            <div id="village" class="scroll interactive"></div>
             <div id="modal-layer"><div id="modal" class="modal paper"></div></div>`;
         const q = (id: string) => this.root.querySelector<HTMLElement>(`#${id}`)!;
         this.els = {
@@ -74,7 +90,8 @@ export class GameUI {
             modalLayer: q('modal-layer'),
             modal: q('modal'),
             toast: q('toast'),
-            hint: q('hint')
+            hint: q('hint'),
+            pauseMark: q('pause-mark')
         };
         this.minimap = new Minimap(this.root.querySelector('#minimap')!, c, () => {
             const v = this.scene.cameras.main.worldView;
@@ -83,6 +100,44 @@ export class GameUI {
         this.handlers = this.buildHandlers();
         this.root.addEventListener('pointerdown', (e) => this.onPointer(e));
         this.root.addEventListener('change', (e) => this.onChange(e));
+        window.addEventListener(
+            'pointerdown',
+            (e) => {
+                const input = document.getElementById('hero-name') as HTMLInputElement | null;
+                if (!input || e.target === input) return;
+                this.keepHeroFocus = false;
+                this.finishHeroName(input.value);
+            },
+            true
+        );
+        this.root.addEventListener('focusin', (e) => {
+            if ((e.target as HTMLElement).id !== 'hero-name') return;
+            this.keepHeroFocus = true;
+            this.nameBeforeEdit = this.c.sim.state.kingdom.heroName;
+            this.scene.input.keyboard?.disableGlobalCapture();
+        });
+        this.root.addEventListener('focusout', (e) => {
+            const input = e.target as HTMLInputElement;
+            if (input.id !== 'hero-name' || this.rewritingSelection) return;
+            this.scene.input.keyboard?.enableGlobalCapture();
+            this.finishHeroName(input.value);
+        });
+        this.root.addEventListener('keydown', (e) => {
+            const input = e.target as HTMLInputElement;
+            if (input.id !== 'hero-name') return;
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.finishHeroName(input.value);
+                input.blur();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                const prev = this.nameBeforeEdit ?? '';
+                this.c.sim.state.kingdom.heroName = prev;
+                this.nameBeforeEdit = prev;
+                input.value = this.c.sim.heroName();
+                input.blur();
+            }
+        });
         this.els.modalLayer.addEventListener('pointerdown', (e) => {
             if (e.target === this.els.modalLayer && this.modal?.kind !== 'request') this.closeModal();
         });
@@ -107,6 +162,11 @@ export class GameUI {
         this.seenLog = 0;
     }
 
+    /** True while a message popup has stopped the simulation. */
+    simPaused(): boolean {
+        return this.modal?.kind === 'request' && this.c.sim.state.settings.pauseOnPopup;
+    }
+
     update(dt: number) {
         this.timer -= dt;
         this.modalTimer -= dt;
@@ -126,8 +186,41 @@ export class GameUI {
 
     private set(el: HTMLElement, key: string, html: string) {
         if (this.cache.get(key) === html) return;
+        const heroEdit = key === 'selection' && this.keepHeroFocus ? this.heroNameEdit() : null;
         this.cache.set(key, html);
+        this.rewritingSelection = key === 'selection';
         el.innerHTML = html;
+        this.rewritingSelection = false;
+        if (heroEdit) this.restoreHeroNameEdit(heroEdit);
+    }
+
+    private heroNameEdit(): { value: string; start: number; end: number } | null {
+        const input = document.activeElement;
+        if (!(input instanceof HTMLInputElement) || input.id !== 'hero-name') return null;
+        return {
+            value: input.value,
+            start: input.selectionStart ?? input.value.length,
+            end: input.selectionEnd ?? input.value.length
+        };
+    }
+
+    private restoreHeroNameEdit(edit: { value: string; start: number; end: number }) {
+        const input = this.els.selection.querySelector<HTMLInputElement>('#hero-name');
+        if (!input) return;
+        input.value = edit.value;
+        input.focus();
+        input.setSelectionRange(edit.start, edit.end);
+    }
+
+    private finishHeroName(raw: string) {
+        const cleaned = raw.replace(/[\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 24);
+        const name = cleaned.toLowerCase() === 'explorer' ? '' : cleaned;
+        const before = this.nameBeforeEdit ?? this.c.sim.state.kingdom.heroName;
+        this.c.sim.state.kingdom.heroName = name;
+        this.nameBeforeEdit = name;
+        if (name === before) return;
+        this.toast(name ? `Your hero is now ${name}.` : 'Your hero is called Explorer again.', 'good');
+        this.refresh(true);
     }
 
     private refresh(force: boolean) {
@@ -186,6 +279,7 @@ export class GameUI {
         this.modal = m;
         this.els.modalLayer.classList.add('open');
         this.renderModal();
+        this.syncPauseMark();
         this.sound.play('click');
     }
 
@@ -201,6 +295,11 @@ export class GameUI {
         this.cache.delete('modal');
         this.els.modalLayer.classList.remove('open');
         this.els.modal.innerHTML = '';
+        this.syncPauseMark();
+    }
+
+    private syncPauseMark() {
+        this.els.pauseMark.classList.toggle('show', this.simPaused());
     }
 
     toast(text: string, tone: string = 'info') {
@@ -239,6 +338,10 @@ export class GameUI {
             case 'opt-sfx':
                 st.sfxVolume = Number(t.value);
                 this.sound.sfxVolume = st.sfxVolume;
+                break;
+            case 'opt-pausepopup':
+                st.pauseOnPopup = t.checked;
+                this.syncPauseMark();
                 break;
             default:
                 break;
@@ -376,7 +479,7 @@ export class GameUI {
                 const e = sim().explorer();
                 if (v && e) {
                     e.order = { type: 'talk', villageId: v.id };
-                    this.toast(`Your explorer heads to ${v.name} to talk.`);
+                    this.toast(`${sim().heroName()} heads to ${v.name} to talk.`);
                 }
             },
             talk: (el) => {

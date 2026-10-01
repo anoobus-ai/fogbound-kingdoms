@@ -64,7 +64,7 @@ const formation = (i: number, n: number): { dx: number; dy: number } => {
     const cols = Math.ceil(Math.sqrt(n));
     const row = Math.floor(i / cols);
     const col = i % cols;
-    return { dx: (col - (cols - 1) / 2) * 0.8, dy: (row - (Math.ceil(n / cols) - 1) / 2) * 0.8 };
+    return { dx: (col - (cols - 1) / 2) * 1.05, dy: (row - (Math.ceil(n / cols) - 1) / 2) * 1.05 };
 };
 
 export const issueMove = (sim: Sim, units: Unit[], x: number, y: number, attackMove = false) => {

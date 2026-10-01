@@ -160,6 +160,11 @@ export class Sim {
         return this.unitById.get(this.state.kingdom.explorerId);
     }
 
+    /** The player's name for the hero, or "Explorer" when they have not chosen one. */
+    heroName(): string {
+        return this.state.kingdom.heroName?.trim() || 'Explorer';
+    }
+
     village(id: number | null | undefined): Village | undefined {
         return id == null ? undefined : this.villageById.get(id);
     }
@@ -231,16 +236,19 @@ export class Sim {
         }
     }
 
-    passableFor(faction: FactionId): (x: number, y: number) => boolean {
+    /** Tile coordinates. Gates open only for the faction that owns them. */
+    walkable(faction: FactionId, x: number, y: number): boolean {
         const { w, h } = this.state.map;
-        return (x, y) => {
-            if (x < 0 || y < 0 || x >= w || y >= h) return false;
-            const i = y * w + x;
-            const s = this.solid[i];
-            if (s === 0) return true;
-            if (s === GATE) return this.friendlyFactions(faction, this.gateFaction.get(i) ?? '');
-            return false;
-        };
+        if (x < 0 || y < 0 || x >= w || y >= h) return false;
+        const i = y * w + x;
+        const s = this.solid[i];
+        if (s === 0) return true;
+        if (s === GATE) return this.friendlyFactions(faction, this.gateFaction.get(i) ?? '');
+        return false;
+    }
+
+    passableFor(faction: FactionId): (x: number, y: number) => boolean {
+        return (x, y) => this.walkable(faction, x, y);
     }
 
     isSolidAt(x: number, y: number): boolean {

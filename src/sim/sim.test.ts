@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { idx } from './map';
 import { generateWorld } from './mapgen';
 import { Pathfinder } from './pathfinding';
 import { newGame } from './create';
@@ -55,6 +56,18 @@ describe('game simulation', () => {
         expect(sim.state.time).toBeGreaterThan(239);
         expect(sim.state.units.length).toBeGreaterThan(20);
         expect(sim.state.explored.some((e) => e === 1)).toBe(true);
+    });
+
+    it('keeps a hero name through save, load, and respawn', () => {
+        const sim = newGame(21);
+        sim.state.kingdom.heroName = 'Alric';
+        const copy = deserialize(serialize(sim.state));
+        expect(copy.heroName()).toBe('Alric');
+        killUnit(copy, copy.explorer()!, null);
+        expect(copy.state.log.some((l) => l.text.includes('Alric has fallen'))).toBe(true);
+        run(copy, 11);
+        expect(copy.heroName()).toBe('Alric');
+        expect(copy.state.log.some((l) => l.text.includes('Alric has returned'))).toBe(true);
     });
 
     it('saves and loads the whole world', () => {
@@ -238,5 +251,46 @@ describe('game simulation', () => {
         const tree = sim.state.resources.find((r) => r.kind === 'tree')!;
         issueSmartCommand(sim, [pawn], tree.x + 0.5, tree.y + 0.5);
         expect(pawn.order.type).toBe('gather');
+    });
+});
+
+describe('unit collision', () => {
+    it('separates villagers who spawn on the same spot', () => {
+        const sim = newGame(3);
+        const e = sim.explorer()!;
+        const a = sim.spawnUnit('pawn', KINGDOM, null, e.x, e.y);
+        const b = sim.spawnUnit('pawn', KINGDOM, null, e.x, e.y);
+        run(sim, 1);
+        expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(0.75);
+    });
+
+    it('keeps villagers off solid tiles while they walk', () => {
+        const sim = newGame(4);
+        const e = sim.explorer()!;
+        const tx = Math.floor(e.x);
+        const ty = Math.floor(e.y);
+        const map = sim.state.map;
+        for (let y = 0; y < map.h; y++) sim.solid[idx(map, tx + 2, y)] = 1;
+        const pawn = sim.spawnUnit('pawn', KINGDOM, null, tx + 0.5, ty + 0.5);
+        pawn.order = { type: 'move', x: tx + 5.5, y: ty + 0.5, attackMove: false };
+        pawn.path = [];
+        pawn.pathTarget = '';
+        for (let i = 0; i < 60; i++) {
+            sim.update(1 / 20);
+            expect(sim.isSolidAt(Math.floor(pawn.x), Math.floor(pawn.y))).toBe(false);
+        }
+    });
+
+    it('separates a crowd that is standing on one spot', () => {
+        const sim = newGame(8);
+        const e = sim.explorer()!;
+        const pawns = [];
+        for (let i = 0; i < 5; i++) pawns.push(sim.spawnUnit('pawn', KINGDOM, null, e.x, e.y));
+        run(sim, 2);
+        for (let i = 0; i < pawns.length; i++) {
+            for (let j = i + 1; j < pawns.length; j++) {
+                expect(Math.hypot(pawns[i].x - pawns[j].x, pawns[i].y - pawns[j].y)).toBeGreaterThanOrEqual(0.7);
+            }
+        }
     });
 });

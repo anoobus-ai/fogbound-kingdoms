@@ -2,7 +2,7 @@ import { BUILDINGS } from '../data/buildings';
 import { UNITS } from '../data/units';
 import { idx } from './map';
 import type { Sim } from './sim';
-import { BANDIT, KINGDOM, WILD, type Building, type Rect, type Unit } from './types';
+import { BANDIT, KINGDOM, WILD, type Building, type Rect, type Unit, type UnitKind } from './types';
 import { attackRange, buildingCenter, distToBuilding, performAttack } from './combat';
 import {
     RESOURCE_OF,
@@ -50,16 +50,20 @@ const stepUnit = (sim: Sim, u: Unit, dt: number) => {
             idleBehaviour(sim, u, dt);
             return;
         case 'move': {
-            const arrived = Math.hypot(o.x - u.x, o.y - u.y) < 0.35;
-            if (arrived || moveTo(sim, u, { x: Math.floor(o.x), y: Math.floor(o.y), w: 1, h: 1 }, `m:${o.x},${o.y}`, dt) === 'stuck') {
-                setIdle(sim, u);
-            }
+            const d = Math.hypot(o.x - u.x, o.y - u.y);
+            const x0 = u.x;
+            const y0 = u.y;
+            const res = d < 0.4 ? 'arrived' : moveTo(sim, u, { x: Math.floor(o.x), y: Math.floor(o.y), w: 1, h: 1 }, `m:${o.x},${o.y}`, dt);
+            const stalled = Math.hypot(u.x - x0, u.y - y0) < 0.02;
+            if (res === 'stuck' || res === 'arrived' || (d < 1.1 && stalled)) setIdle(sim, u);
             return;
         }
         case 'wander': {
-            if (Math.hypot(o.x - u.x, o.y - u.y) < 0.4 || moveTo(sim, u, { x: Math.floor(o.x), y: Math.floor(o.y), w: 1, h: 1 }, `w:${o.x},${o.y}`, dt) === 'stuck') {
-                setIdle(sim, u);
-            }
+            const d = Math.hypot(o.x - u.x, o.y - u.y);
+            const x0 = u.x;
+            const y0 = u.y;
+            const res = d < 0.4 ? 'arrived' : moveTo(sim, u, { x: Math.floor(o.x), y: Math.floor(o.y), w: 1, h: 1 }, `w:${o.x},${o.y}`, dt);
+            if (res === 'stuck' || res === 'arrived' || (d < 1.1 && Math.hypot(u.x - x0, u.y - y0) < 0.02)) setIdle(sim, u);
             return;
         }
         case 'attack': {
@@ -224,7 +228,7 @@ const fightUnit = (sim: Sim, u: Unit, t: Unit, dt: number) => {
         u.engageId = null;
         return;
     }
-    if (d < 2.2) {
+    if (d < 2.2 && lineClear(sim, u, t.x, t.y)) {
         stepToward(sim, u, t.x, t.y, dt);
     } else if (moveTo(sim, u, { x: Math.floor(t.x), y: Math.floor(t.y), w: 1, h: 1 }, `u:${t.id}`, dt) === 'stuck') {
         u.engageId = null;
@@ -304,50 +308,130 @@ const speedOf = (sim: Sim, u: Unit): number => {
     return s;
 };
 
-/** Returns true when the point has been reached. */
+/**
+ * Radius of the visible body, in tiles. Two units closer than the sum of their
+ * radii are standing on the same pixels.
+ */
+const bodyRadius = (kind: UnitKind): number => {
+    switch (kind) {
+        case 'sheep':
+            return 0.28;
+        case 'wolf':
+            return 0.36;
+        case 'bear':
+            return 0.44;
+        case 'explorer':
+            return 0.5;
+        case 'lancer':
+            return 0.42;
+        case 'pawn':
+        case 'militia':
+        case 'archer':
+        case 'warrior':
+        case 'monk':
+        case 'messenger':
+        case 'caravan':
+        case 'goblinTorch':
+        case 'goblinTnt':
+        case 'goblinBarrel':
+            return 0.4;
+        default: {
+            const never: never = kind;
+            throw new Error(`Unknown unit ${String(never)}`);
+        }
+    }
+};
+
+const nearby: Unit[] = [];
+
+/** True when a straight walk stays on walkable tiles. */
+const lineClear = (sim: Sim, u: Unit, tx: number, ty: number): boolean => {
+    const dist = Math.hypot(tx - u.x, ty - u.y);
+    const steps = Math.max(1, Math.ceil(dist * 2));
+    for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        if (!sim.walkable(u.faction, Math.floor(u.x + (tx - u.x) * t), Math.floor(u.y + (ty - u.y) * t))) return false;
+    }
+    return true;
+};
+
+/** A walkable point on a ring, stable per unit, so crowds don't share one tile. */
+const approachPoint = (sim: Sim, u: Unit, cx: number, cy: number, dist: number): { x: number; y: number } => {
+    const start = u.id % 8;
+    for (let i = 0; i < 8; i++) {
+        const a = ((start + i) % 8) * (Math.PI / 4);
+        const x = cx + Math.cos(a) * dist;
+        const y = cy + Math.sin(a) * dist;
+        if (sim.walkable(u.faction, Math.floor(x), Math.floor(y))) return { x, y };
+    }
+    return { x: cx, y: cy };
+};
+
+const slideTo = (sim: Sim, u: Unit, nx: number, ny: number): boolean => {
+    const ox = u.x;
+    const oy = u.y;
+    const free = (x: number, y: number) => sim.walkable(u.faction, Math.floor(x), Math.floor(y));
+    if (free(nx, ny)) {
+        u.x = nx;
+        u.y = ny;
+    } else if (free(nx, oy)) u.x = nx;
+    else if (free(ox, ny)) u.y = ny;
+    return u.x !== ox || u.y !== oy;
+};
+
+/** Returns true when the point has been reached. Slides along walls instead of entering them. */
 const stepToward = (sim: Sim, u: Unit, tx: number, ty: number, dt: number): boolean => {
     const dx = tx - u.x;
     const dy = ty - u.y;
     const d = Math.hypot(dx, dy);
     if (d < 0.05) return true;
     const step = Math.min(d, speedOf(sim, u) * dt);
-    u.x += (dx / d) * step;
-    u.y += (dy / d) * step;
+    const wantX = u.x + (dx / d) * step;
+    const wantY = u.y + (dy / d) * step;
+    const moved = slideTo(sim, u, wantX, wantY);
+    if (!moved) return false;
     if (Math.abs(dx) > 0.02) u.facing = dx < 0 ? -1 : 1;
     u.anim = u.carry && u.carry.amount > 0 ? 'carry' : 'run';
-    return step >= d - 0.001;
+    const left = Math.hypot(tx - u.x, ty - u.y);
+    const slid = Math.hypot(u.x - wantX, u.y - wantY) > 0.001;
+    return left <= 0.001 || (slid && left < 0.35);
 };
 
-/** Gently pushes overlapping units apart and out of walls. */
+const pushOut = (sim: Sim, u: Unit, px: number, py: number): boolean => slideTo(sim, u, u.x + px, u.y + py);
+
+/** Pushes overlapping sprites apart until their bodies no longer share pixels, and out of walls. */
 const separate = (sim: Sim) => {
-    const near: Unit[] = [];
-    for (const u of sim.state.units) {
-        near.length = 0;
-        sim.spatial.query(u.x, u.y, 0.5, near);
-        for (const o of near) {
-            if (o.id <= u.id) continue;
-            let dx = o.x - u.x;
-            let dy = o.y - u.y;
-            let d = Math.hypot(dx, dy);
-            if (d < 0.001) {
-                dx = ((u.id % 3) - 1) * 0.01 + 0.01;
-                dy = ((o.id % 3) - 1) * 0.01;
-                d = Math.hypot(dx, dy);
-            }
-            if (d >= 0.5) continue;
-            const push = (0.5 - d) * 0.25;
-            const px = (dx / d) * push;
-            const py = (dy / d) * push;
-            if (!sim.isSolidAt(Math.floor(u.x - px), Math.floor(u.y - py))) {
-                u.x -= px;
-                u.y -= py;
-            }
-            if (!sim.isSolidAt(Math.floor(o.x + px), Math.floor(o.y + py))) {
-                o.x += px;
-                o.y += py;
+    for (let pass = 0; pass < 2; pass++) {
+        for (const u of sim.state.units) {
+            nearby.length = 0;
+            sim.spatial.query(u.x, u.y, 1.2, nearby);
+            for (const o of nearby) {
+                if (o.id <= u.id) continue;
+                let dx = o.x - u.x;
+                let dy = o.y - u.y;
+                let d = Math.hypot(dx, dy);
+                const min = bodyRadius(u.kind) + bodyRadius(o.kind);
+                if (d >= min) continue;
+                const gap = d;
+                if (d < 0.001) {
+                    const a = ((u.id * 13 + o.id) % 8) * (Math.PI / 4);
+                    dx = Math.cos(a);
+                    dy = Math.sin(a);
+                    d = 1;
+                }
+                const overlap = Math.min(min - gap, 0.8);
+                const nx = dx / d;
+                const ny = dy / d;
+                const traveling = u.path.length > 0 || o.path.length > 0;
+                let share = Math.min(overlap * 0.5, traveling ? 0.04 : 0.12);
+                if (!pushOut(sim, u, -nx * share, -ny * share)) share = Math.min(overlap, 0.2);
+                const rest = Math.min(overlap - share, 0.2);
+                if (!pushOut(sim, o, nx * share, ny * share) && rest > 0) pushOut(sim, u, -nx * rest, -ny * rest);
             }
         }
-        if (sim.isSolidAt(Math.floor(u.x), Math.floor(u.y)) && u.path.length === 0) nudgeOut(sim, u);
+    }
+    for (const u of sim.state.units) {
+        if (sim.isSolidAt(Math.floor(u.x), Math.floor(u.y))) nudgeOut(sim, u);
     }
 };
 
@@ -390,9 +474,12 @@ const gather = (sim: Sim, u: Unit, resourceId: number, dt: number) => {
         u.order = { type: 'returnCargo', thenResourceId: r.id, thenFarmId: null };
         return;
     }
-    const d = Math.hypot(r.x + 0.5 - u.x, r.y + 0.5 - u.y);
-    if (d > 1.25) {
-        if (moveTo(sim, u, { x: r.x, y: r.y, w: 1, h: 1 }, `r:${r.id}`, dt) === 'stuck') {
+    const cx = r.x + 0.5;
+    const cy = r.y + 0.5;
+    const d = Math.hypot(cx - u.x, cy - u.y);
+    if (d > 1.55) {
+        const spot = approachPoint(sim, u, cx, cy, 1.15);
+        if (moveTo(sim, u, { x: Math.floor(spot.x), y: Math.floor(spot.y), w: 1, h: 1 }, `r:${r.id}`, dt) === 'stuck') {
             const alt = nearestResource(sim, u.x, u.y, r.kind, 12, r.id);
             if (alt) u.order = { type: 'gather', resourceId: alt.id };
             else setIdle(sim, u);
@@ -428,12 +515,14 @@ const farm = (sim: Sim, u: Unit, farmId: number, dt: number) => {
         u.order = { type: 'returnCargo', thenResourceId: null, thenFarmId: b.id };
         return;
     }
-    const spotX = b.x + 0.7 + ((u.id * 7) % 16) / 10;
-    const spotY = b.y + 0.9 + ((u.id * 3) % 12) / 10;
-    if (Math.hypot(spotX - u.x, spotY - u.y) > 0.3) {
-        if (Math.hypot(spotX - u.x, spotY - u.y) < 3) stepToward(sim, u, spotX, spotY, dt);
-        else if (moveTo(sim, u, { x: Math.floor(spotX), y: Math.floor(spotY), w: 1, h: 1 }, `f:${b.id}`, dt) === 'stuck') setIdle(sim, u);
-        return;
+    const slot = (u.id % 8) * (Math.PI / 4);
+    const spotX = b.x + b.w / 2 + Math.cos(slot) * 1.15;
+    const spotY = b.y + b.h / 2 + Math.sin(slot) * 1.15;
+    const spotD = Math.hypot(spotX - u.x, spotY - u.y);
+    if (spotD > 0.35) {
+        if (spotD < 3 && lineClear(sim, u, spotX, spotY)) stepToward(sim, u, spotX, spotY, dt);
+        else if (moveTo(sim, u, { x: Math.floor(spotX), y: Math.floor(spotY), w: 1, h: 1 }, `f:${b.id}:${u.id % 8}`, dt) === 'stuck') setIdle(sim, u);
+        if (spotD > 0.9) return;
     }
     u.anim = 'work';
     u.animUntil = sim.state.time + 0.2;

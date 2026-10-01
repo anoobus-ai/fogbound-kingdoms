@@ -135,7 +135,8 @@ export class EntityRenderer {
         const fighting = state === 'attack';
         switch (u.kind) {
             case 'explorer':
-                return `warrior-${fighting ? 'attack' : moving ? 'run' : 'idle'}-Blue`;
+                // Gold horned-helmet warrior, unused by the blue kingdom army.
+                return `warrior-${fighting ? 'attack' : moving ? 'run' : 'idle'}-Yellow`;
             case 'warrior':
             case 'archer':
             case 'lancer':
@@ -200,7 +201,7 @@ export class EntityRenderer {
                 const sprite = this.scene.add.sprite(0, 0, key === 'wolf' || key.includes('bear') ? key : '__DEFAULT');
                 sprite.setOrigin(0.5, UNIT_ORIGIN_Y[u.kind] ?? 0.58);
                 if (u.kind === 'wolf' || u.kind === 'bear') sprite.setScale(u.kind === 'bear' ? 3.4 : 2.8).setOrigin(0.5, 0.8);
-                else if (u.kind === 'explorer') sprite.setScale(1.12);
+                else if (u.kind === 'explorer') sprite.setScale(1.42);
                 else if (u.kind === 'sheep') sprite.setScale(0.8);
                 else if (u.kind === 'messenger' || u.kind === 'caravan') sprite.setScale(0.9);
                 view = { sprite, key: '' };
@@ -532,8 +533,8 @@ export class EntityRenderer {
 
         const explorer = sim.explorer();
         if (explorer) {
-            rings.lineStyle(3, 0xffd34d, 0.9);
-            rings.strokeEllipse(explorer.x * TILE, explorer.y * TILE + 22, 50, 20);
+            rings.lineStyle(3, 0xffd34d, 0.95);
+            rings.strokeEllipse(explorer.x * TILE, explorer.y * TILE + 24, 68, 26);
         }
 
         for (const u of sim.state.units) {
@@ -548,7 +549,7 @@ export class EntityRenderer {
                 rings.strokeEllipse(px, py + 22, 44, 18);
             }
             if (u.hp < max || selected || sel.hover === u.id) {
-                const top = u.kind === 'lancer' ? 62 : u.kind === 'sheep' ? 34 : u.kind === 'wolf' || u.kind === 'bear' ? 46 : 52;
+                const top = u.kind === 'explorer' ? 86 : u.kind === 'lancer' ? 62 : u.kind === 'sheep' ? 34 : u.kind === 'wolf' || u.kind === 'bear' ? 46 : 52;
                 this.bar(g, px, py - top, 42, u.hp / max, this.barColor(u.faction));
             }
         }

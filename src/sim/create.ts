@@ -75,6 +75,7 @@ export const newGame = (seed: number): Sim => {
         villages: [],
         kingdom: {
             explorerId: 0,
+            heroName: '',
             explorerDeadUntil: 0,
             respawn: { x: world.center.x + 0.5, y: world.center.y + 0.5 },
             respawnVillageId: null,
@@ -85,7 +86,7 @@ export const newGame = (seed: number): Sim => {
         clock: { nextRaidAt: 300, nextEventAt: 150, nextWildlifeAt: 40, nextDiplomacyAt: 5 },
         log: [],
         requests: [],
-        settings: { sightFog: true, musicVolume: 0.4, sfxVolume: 0.7 }
+        settings: { sightFog: true, pauseOnPopup: true, musicVolume: 0.4, sfxVolume: 0.7 }
     };
     const sim = new Sim(state);
     const rng = new Rng(seed * 7 + 13);
