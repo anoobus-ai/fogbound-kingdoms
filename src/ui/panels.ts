@@ -1,6 +1,6 @@
 import { BIOMES, NEED_LABELS } from '../data/biomes';
 import { BUILDINGS, BUILD_MENU, type BuildCategory } from '../data/buildings';
-import { COMMAND_RADIUS, VOTE_THRESHOLD } from '../data/balance';
+import { VOTE_THRESHOLD } from '../data/balance';
 import { TECHS } from '../data/techs';
 import { TRAITS } from '../data/traits';
 import { UNITS } from '../data/units';
@@ -10,6 +10,7 @@ import { freeUrl, oldUrl } from '../render/assets';
 import type { Sim } from '../sim/sim';
 import { KINGDOM, WILD, type Building, type NeedId, type Order, type Unit, type Village } from '../sim/types';
 import { currentVillage, isBuildingCommandable, isCommandable } from '../sim/commands';
+import { kingdomAtWar } from '../sim/diplomacy';
 import { popCap, population } from '../sim/buildings';
 import { NEED_IDS, needWeights } from '../sim/villages';
 import { agendaAlignment, factionName } from '../sim/politics';
@@ -20,13 +21,17 @@ export interface PanelState {
     buildTab: Exclude<BuildCategory, 'hidden' | 'core'>;
     villagePanelId: number | null;
     villagePanelClosed: boolean;
+    /** The side card stays short until the player opens the rest. */
+    selectionDetails: boolean;
+    /** Changes when the selection changes, which closes the extra details. */
+    selectionKey: string;
 }
 
 const fmt = (n: number) => Math.floor(n).toLocaleString();
 
-const healthMeter = (current: number, max: number) => {
+const healthMeter = (current: number, max: number, label = 'Health') => {
     const pct = max > 0 ? (current / max) * 100 : 0;
-    return bar(pct, healthColor(pct), `Health ${Math.ceil(current)} / ${max}`, pct <= 35 ? 'health critical' : 'health');
+    return bar(pct, healthColor(pct), `${label} ${Math.ceil(current)} / ${max}`, pct <= 35 ? 'health critical' : 'health');
 };
 
 // ---------- top bar ----------
@@ -64,7 +69,7 @@ export const describeOrder = (sim: Sim, u: Unit): string => {
         case 'idle':
             return u.kind === 'sheep' ? 'Grazing' : 'Idle';
         case 'move':
-            return o.attackMove ? 'Marching (attacking anything in the way)' : 'Walking';
+            return o.attackMove ? 'Attack-moving' : 'Walking';
         case 'wander':
             return 'Wandering';
         case 'attack':
@@ -115,8 +120,8 @@ const stanceButtons = (units: Unit[]): string => {
     const b = (stance: string, label: string, title: string) =>
         `<button class="btn small ${current === stance ? 'active' : ''}" data-action="stance" data-stance="${stance}" title="${title}">${label}</button>`;
     return `<div class="row wrap">
-        ${b('passive', '🛡 Passive', 'Only fights back when attacked (default).')}
-        ${b('aggressive', '⚔ Attack on sight', 'Attacks any enemy it can see.')}
+        ${b('passive', '🛡 Passive', 'Only fights back when attacked.')}
+        ${b('aggressive', '⚔ Attack on sight', 'Attacks any enemy it can see. Soldiers and your hero do this on their own while you are at war.')}
         ${b('hold', '✋ Hold', 'Stays put and only hits enemies in reach.')}
         <button class="btn small red" data-action="stop" title="Stop what they are doing">Stop</button>
     </div>`;
@@ -135,66 +140,109 @@ const buildMenu = (sim: Sim, state: PanelState): string => {
                 <span>${esc(def.name)}${def.grand ? ' ★' : ''}</span><span>${costHtml(def.cost)}</span></button>`;
         })
         .join('');
-    return `<div class="tabs">${icon('hammer')}${tabs}</div><div class="build-grid">${items}</div>
-        <div class="muted">Click a building, then click on the map. Walls, roads and trees can be painted by dragging. Right-click cancels.</div>`;
+    return `<div class="tabs">${icon('hammer')}${tabs}</div><div class="build-grid">${items}</div>`;
+};
+
+const answersToWar = (u: Unit): boolean => {
+    const cls = UNITS[u.kind].unitClass;
+    return cls === 'soldier' || cls === 'hero';
+};
+
+/** Shown on the short card only during a war, so the attack-on-sight default is visible without opening More. */
+const warStanceChip = (sim: Sim, units: Unit[]): string => {
+    if (!kingdomAtWar(sim)) return '';
+    const fighters = units.filter((u) => u.faction === KINGDOM && answersToWar(u));
+    if (!fighters.length) return '';
+    const stance = fighters.every((u) => u.stance === fighters[0].stance) ? fighters[0].stance : null;
+    if (stance === 'aggressive') return '<span class="chip bad">Attack on sight</span>';
+    if (stance === 'hold') return '<span class="chip neutral">Hold</span>';
+    if (stance === 'passive') return '<span class="chip neutral">Passive</span>';
+    return '<span class="chip neutral">Mixed stance</span>';
+};
+
+const detailsButton = (open: boolean): string =>
+    `<button class="btn small details-toggle" data-action="toggle-details">${open ? 'Less' : 'More'}</button>`;
+
+const selectionIdentity = (units: Unit[], buildingId: number | null): string => {
+    if (units.length) return `u:${[...units.map((u) => u.id)].sort((a, b) => a - b).join(',')}`;
+    if (buildingId !== null) return `b:${buildingId}`;
+    return '';
+};
+
+const rememberSelection = (state: PanelState, key: string) => {
+    if (key === state.selectionKey) return;
+    state.selectionKey = key;
+    state.selectionDetails = false;
+};
+
+const combatLine = (u: Unit): string => {
+    const def = UNITS[u.kind];
+    if (!def.damage) return '';
+    return `<div class="muted">⚔ ${def.damage} dmg · 🛡 ${def.armor} armor · range ${def.range}</div>`;
 };
 
 export const renderSelection = (sim: Sim, c: Controller, state: PanelState): string => {
     const units = c.selectedUnitList();
-    if (units.length === 1) return renderOneUnit(sim, units[0], state);
-    if (units.length > 1) return renderManyUnits(sim, units, state);
-    const b = c.selectedBuilding !== null ? sim.buildingById.get(c.selectedBuilding) : undefined;
-    if (b) return renderBuilding(sim, b);
+    const building = units.length === 0 && c.selectedBuilding !== null ? sim.buildingById.get(c.selectedBuilding) : undefined;
+    rememberSelection(state, selectionIdentity(units, building?.id ?? (units.length ? null : c.selectedBuilding)));
+    const open = state.selectionDetails;
+    if (units.length === 1) return renderOneUnit(sim, units[0], state, open);
+    if (units.length > 1) return renderManyUnits(sim, units, state, open);
+    if (building) return renderBuilding(sim, building, open);
     if (c.selectedBuilding !== null) c.selectedBuilding = null;
     return '';
 };
 
-const renderOneUnit = (sim: Sim, u: Unit, state: PanelState): string => {
+const renderOneUnit = (sim: Sim, u: Unit, state: PanelState, open: boolean): string => {
     const def = UNITS[u.kind];
     const color = factionColor(sim, u.faction);
     const village = sim.village(u.villageId);
     const commandable = isCommandable(sim, u);
-    const portrait = u.person ? personAvatar(u.person.avatar) : unitPortrait(u.kind, color, u.kind === 'explorer' ? 76 : 60);
+    const portrait = u.person ? personAvatar(u.person.avatar, true) : unitPortrait(u.kind, color, 44);
     const namedHero = u.kind === 'explorer' && !!sim.state.kingdom.heroName?.trim();
-    const title =
+    const leader = village && village.leaderId === u.id;
+    const name =
         u.kind === 'explorer'
-            ? `<input id="hero-name" class="hero-name" maxlength="24" value="${esc(sim.heroName())}" placeholder="Name your hero" spellcheck="false" autocomplete="off" aria-label="Your hero's name" title="Click to name your hero">`
-            : u.person
-              ? `${esc(u.person.name)} <span class="muted">— ${def.name}${village ? ` of ${esc(village.name)}` : ''}</span>`
-              : def.name;
-    const leader = village && village.leaderId === u.id ? '<span class="chip politics">Leader</span>' : '';
-    let extra = '';
-    if (u.faction === KINGDOM && !commandable) {
-        extra = `<div class="muted">Too far from your explorer to hear orders (over ${COMMAND_RADIUS} tiles). Walk closer or send a messenger.</div>`;
-    } else if (commandable) {
-        extra = stanceButtons([u]);
-        if (u.kind === 'pawn') extra += buildMenu(sim, state);
-        if (u.kind === 'monk') extra += '<div class="muted">Right-click an ally to heal them, or an enemy to convert them to your side.</div>';
-        if (u.kind === 'explorer') {
-            if (!namedHero) extra += `<div class="muted">Click the name to rename your hero.</div>`;
-            extra += `<div class="muted">Your hero: soldiers near him deal 20% more damage. Right-click a camp or village to talk to them. Units within ${COMMAND_RADIUS} tiles obey your orders.</div>`;
-            const v = currentVillage(sim);
-            if (v) extra += `<button class="btn small" data-action="open-village" data-id="${v.id}">Open ${esc(v.name)}</button>`;
-        }
-        if (u.kind === 'pawn') extra += '<div class="muted">Right-click trees, gold, stone, sheep or farms to gather. Right-click an unfinished building to help build it.</div>';
-    }
-    const carry = u.carry && u.carry.amount >= 1 ? ` · carrying ${Math.floor(u.carry.amount)} ${u.carry.type}` : '';
-    return `<div class="row" style="align-items:flex-start">
-        ${portrait}
-        <div class="col" style="flex:1">
-            ${u.kind === 'explorer' ? title : `<h3>${title} ${leader}</h3>`}
-            ${namedHero ? '<div class="muted">Explorer</div>' : ''}
-            <div class="row wrap">${relationChip(sim, u.faction)} ${traitChips(u)}</div>
-            ${healthMeter(u.hp, sim.maxHp(u.kind))}
+            ? `<input id="hero-name" class="hero-name" maxlength="24" value="${esc(sim.heroName())}" placeholder="Name your hero" spellcheck="false" autocomplete="off" aria-label="Your hero's name">`
+            : `<h3>${u.person ? esc(u.person.name) : def.name}</h3>`;
+    const subtitle =
+        u.kind === 'explorer'
+            ? namedHero
+                ? 'Explorer'
+                : ''
+            : [def.name, leader ? 'Leader' : '', village?.name ?? ''].filter(Boolean).join(' · ');
+    const carry = u.carry && u.carry.amount >= 1 ? ` · ${Math.floor(u.carry.amount)} ${u.carry.type}` : '';
+    const here = currentVillage(sim);
+    let more = '';
+    if (open) {
+        more = `<div class="sel-more">
+            <div class="row wrap">${relationChip(sim, u.faction)} ${leader ? '<span class="chip politics">Leader</span>' : ''} ${traitChips(u)}</div>
             ${u.person ? bar(u.person.mood, moodColor(u.person.mood), `Mood ${Math.round(u.person.mood)}`) : ''}
-            <div class="muted">${describeOrder(sim, u)}${carry} · ${esc(def.description)}</div>
-            ${u.faction !== KINGDOM && def.damage ? `<div class="muted">⚔ ${def.damage} dmg · 🛡 ${def.armor} armor · range ${def.range}</div>` : ''}
-            ${extra}
+            ${combatLine(u)}
+            ${u.faction === KINGDOM && !commandable ? '<div class="muted">Too far to take orders.</div>' : ''}
+            ${commandable ? stanceButtons([u]) : ''}
+            ${commandable && u.kind === 'pawn' ? buildMenu(sim, state) : ''}
+            ${commandable && u.kind === 'explorer' && here ? `<button class="btn small" data-action="open-village" data-id="${here.id}">Open ${esc(here.name)}</button>` : ''}
+        </div>`;
+    }
+    return `<div class="sel-card">
+        <div class="row sel-head">
+            ${portrait}
+            <div class="col" style="flex:1;min-width:0">
+                ${name}
+                ${subtitle ? `<div class="muted">${esc(subtitle)}</div>` : ''}
+                ${healthMeter(u.hp, sim.maxHp(u.kind))}
+                <div class="muted sel-order">${describeOrder(sim, u)}${esc(carry)}</div>
+                ${u.faction === KINGDOM && !commandable ? '<span class="chip neutral">Out of range</span>' : ''}
+                ${warStanceChip(sim, [u])}
+            </div>
         </div>
+        ${more}
+        ${detailsButton(open)}
     </div>`;
 };
 
-const renderManyUnits = (sim: Sim, units: Unit[], state: PanelState): string => {
+const renderManyUnits = (sim: Sim, units: Unit[], state: PanelState, open: boolean): string => {
     const counts = new Map<string, { n: number; u: Unit }>();
     for (const u of units) {
         const e = counts.get(u.kind);
@@ -202,22 +250,34 @@ const renderManyUnits = (sim: Sim, units: Unit[], state: PanelState): string => 
         else counts.set(u.kind, { n: 1, u });
     }
     const chips = [...counts.values()]
-        .map(({ n, u }) => `<div class="unit-chip" data-action="select-kind" data-kind="${u.kind}" title="${UNITS[u.kind].name}">${unitPortrait(u.kind, factionColor(sim, u.faction), 48)}<b>${n}</b></div>`)
+        .map(({ n, u }) => `<div class="unit-chip" data-action="select-kind" data-kind="${u.kind}" title="${UNITS[u.kind].name}">${unitPortrait(u.kind, factionColor(sim, u.faction), 36)}<b>${n}</b></div>`)
         .join('');
     const commandable = units.filter((u) => isCommandable(sim, u));
     const hasPawn = commandable.some((u) => u.kind === 'pawn');
-    const far = units.length - commandable.length;
-    return `<div class="col">
-        <h3>${units.length} units selected</h3>
+    const kingdomCount = units.filter((u) => u.faction === KINGDOM).length;
+    const far = kingdomCount - commandable.length;
+    const worst = units.reduce((a, b) => (a.hp / sim.maxHp(a.kind) <= b.hp / sim.maxHp(b.kind) ? a : b));
+    const orders = units.map((u) => describeOrder(sim, u));
+    const order = orders.every((o) => o === orders[0]) ? orders[0] : 'Mixed tasks';
+    const extra = commandable.length
+        ? `${stanceButtons(commandable)}${hasPawn ? buildMenu(sim, state) : ''}`
+        : kingdomCount
+          ? '<div class="muted">Too far to take orders.</div>'
+          : '';
+    const more = open && extra ? `<div class="sel-more">${extra}</div>` : '';
+    return `<div class="sel-card">
+        <h3>${units.length} selected</h3>
         <div class="units-grid">${chips}</div>
-        ${far ? `<div class="muted">${far} of them are too far from your explorer to hear orders.</div>` : ''}
-        ${commandable.length ? stanceButtons(commandable) : ''}
-        ${hasPawn ? buildMenu(sim, state) : ''}
-        <div class="muted">Right-click to move or attack. Hold Ctrl and right-click to march and attack anything on the way.</div>
+        ${healthMeter(worst.hp, sim.maxHp(worst.kind), 'Lowest')}
+        <div class="muted sel-order">${esc(order)}</div>
+        ${far ? `<span class="chip neutral">${far} out of range</span>` : ''}
+        ${warStanceChip(sim, units)}
+        ${more}
+        ${extra ? detailsButton(open) : ''}
     </div>`;
 };
 
-const buildingArt = (sim: Sim, b: Building): string => {
+const buildingArt = (sim: Sim, b: Building, height: number): string => {
     const color = factionColor(sim, b.faction);
     const art: Partial<Record<Building['kind'], string>> = {
         townCenter: freeUrl(`Buildings/${color} Buildings/Castle.png`),
@@ -237,70 +297,84 @@ const buildingArt = (sim: Sim, b: Building): string => {
         garden: oldUrl('Deco/12.png')
     };
     const src = art[b.kind];
-    return src ? `<img src="${src}" style="height:84px;max-width:110px;object-fit:contain">` : '';
+    return src ? `<img class="building-art" src="${src}" style="height:${height}px" alt="">` : '';
 };
 
-const renderBuilding = (sim: Sim, b: Building): string => {
+const buildingTask = (b: Building): string => {
+    if (!b.built) return '';
+    if (b.queue.length) {
+        const name = UNITS[b.queue[0].unit].name;
+        return b.queue.length > 1 ? `Training ${name} · ${b.queue.length} queued` : `Training ${name}`;
+    }
+    if (b.research) return `Researching ${TECHS[b.research.tech].name}`;
+    return 'Idle';
+};
+
+const renderBuilding = (sim: Sim, b: Building, open: boolean): string => {
     const def = BUILDINGS[b.kind];
     const v = sim.village(b.villageId);
     const max = sim.buildingMaxHp(b);
     const commandable = isBuildingCommandable(sim, b);
-    let body = '';
-    if (!b.built) {
-        body += bar(b.progress * 100, '#5bc0ff', `Under construction ${Math.round(b.progress * 100)}%`);
-        body += '<div class="muted">Select villagers and right-click it to help build.</div>';
-    } else if (b.faction === KINGDOM && commandable) {
-        if (def.trains.length) {
-            const trains = def.trains
-                .map((k) => {
-                    const ud = UNITS[k];
-                    const afford = v ? sim.canAfford(v.stock, ud.cost) : false;
-                    return `<button class="btn tile ${afford ? '' : 'disabled'}" data-action="train" data-id="${b.id}" data-unit="${k}" title="${esc(ud.description)}">
+    const task = buildingTask(b);
+    let more = '';
+    if (open) {
+        more = `<div class="row wrap">${relationChip(sim, b.faction)}</div>`;
+        if (b.built && b.faction === KINGDOM && commandable) {
+            if (def.trains.length) {
+                const trains = def.trains
+                    .map((k) => {
+                        const ud = UNITS[k];
+                        const afford = v ? sim.canAfford(v.stock, ud.cost) : false;
+                        return `<button class="btn tile ${afford ? '' : 'disabled'}" data-action="train" data-id="${b.id}" data-unit="${k}" title="${esc(ud.description)}">
                         ${unitPortrait(k, 'Blue', 34)}<span>${ud.name}</span><span>${costHtml(ud.cost)}</span></button>`;
-                })
-                .join('');
-            body += `<h4>Train</h4><div class="build-grid">${trains}</div>`;
-        }
-        if (b.queue.length) {
-            body += `<div class="queue">${b.queue
-                .map((q, i) => `<div data-action="cancel-train" data-id="${b.id}" data-index="${i}" title="Click to cancel">${unitPortrait(q.unit, 'Blue', 36)}</div>`)
-                .join('')}</div>`;
-            if (v && population(sim, v) >= popCap(sim, v) && b.queue.some((q) => UNITS[q.unit].unitClass !== 'civilian')) {
-                body += '<div class="muted" style="color:#c0392b">Not enough housing! Build more houses.</div>';
+                    })
+                    .join('');
+                more += `<h4>Train</h4><div class="build-grid">${trains}</div>`;
             }
-        }
-        if (def.researches.length) {
-            const techs = def.researches
-                .map((t) => {
-                    const td = TECHS[t];
-                    const done = sim.hasTech(t);
-                    const active = b.research?.tech === t;
-                    const locked = td.requires && !sim.hasTech(td.requires);
-                    return `<button class="btn tile ${done || locked ? 'disabled' : ''} ${active ? 'active' : ''}" data-action="research" data-id="${b.id}" data-tech="${t}" title="${esc(td.description)}${locked ? ` (needs ${TECHS[td.requires!].name})` : ''}">
+            if (b.queue.length) {
+                more += `<div class="queue">${b.queue
+                    .map((q, i) => `<div data-action="cancel-train" data-id="${b.id}" data-index="${i}" title="Click to cancel">${unitPortrait(q.unit, 'Blue', 36)}</div>`)
+                    .join('')}</div>`;
+                if (v && population(sim, v) >= popCap(sim, v) && b.queue.some((q) => UNITS[q.unit].unitClass !== 'civilian')) {
+                    more += '<div class="muted" style="color:#c0392b">Not enough housing.</div>';
+                }
+            }
+            if (def.researches.length) {
+                const techs = def.researches
+                    .map((t) => {
+                        const td = TECHS[t];
+                        const done = sim.hasTech(t);
+                        const active = b.research?.tech === t;
+                        const locked = td.requires && !sim.hasTech(td.requires);
+                        return `<button class="btn tile ${done || locked ? 'disabled' : ''} ${active ? 'active' : ''}" data-action="research" data-id="${b.id}" data-tech="${t}" title="${esc(td.description)}${locked ? ` (needs ${TECHS[td.requires!].name})` : ''}">
                         <span>${done ? '✔ ' : ''}${td.name}</span><span>${active ? `${Math.round(b.research!.progress * 100)}%` : done ? 'Done' : costHtml(td.cost)}</span></button>`;
-                })
-                .join('');
-            body += `<h4>Research</h4><div class="build-grid">${techs}</div>`;
-        }
-        if (b.kind === 'townCenter' && v) body += `<button class="btn small" data-action="open-village" data-id="${v.id}">Open ${esc(v.name)} ▸</button>`;
-        if (b.kind !== 'townCenter') body += ` <button class="btn small red" data-action="demolish" data-id="${b.id}">Demolish</button>`;
-    } else if (b.faction === KINGDOM && v) {
-        body += `<div class="muted">Your explorer is too far away to give orders here.</div>
-            <button class="btn small" data-action="messenger" data-id="${v.id}">✉ Send a messenger to ${esc(v.name)}</button>`;
-    } else if (v) {
-        body += `<div class="muted">${v.stage === 'camp' ? 'A small camp.' : 'An independent village.'} Opinion of you: ${Math.round(v.loyalty)}.</div>
-            <button class="btn small" data-action="talk-to" data-id="${v.id}">Talk to ${esc(v.name)}</button>
+                    })
+                    .join('');
+                more += `<h4>Research</h4><div class="build-grid">${techs}</div>`;
+            }
+            if (b.kind === 'townCenter' && v) more += `<button class="btn small" data-action="open-village" data-id="${v.id}">Open ${esc(v.name)}</button>`;
+            if (b.kind !== 'townCenter') more += `<button class="btn small red" data-action="demolish" data-id="${b.id}">Demolish</button>`;
+        } else if (b.built && b.faction === KINGDOM && v) {
+            more += `<div class="muted">Too far to take orders.</div>
             <button class="btn small" data-action="messenger" data-id="${v.id}">✉ Send a messenger</button>`;
+        } else if (v) {
+            more += `<div class="muted">Opinion ${Math.round(v.loyalty)}</div>
+            <button class="btn small" data-action="talk-to" data-id="${v.id}">Talk</button>
+            <button class="btn small" data-action="messenger" data-id="${v.id}">✉ Messenger</button>`;
+        }
     }
-    return `<div class="row" style="align-items:flex-start">
-        ${buildingArt(sim, b)}
-        <div class="col" style="flex:1">
-            <h3>${def.name}${v ? ` <span class="muted">— ${esc(v.name)}</span>` : ''}</h3>
-            <div class="row wrap">${relationChip(sim, b.faction)}</div>
-            ${b.built ? healthMeter(b.hp, max) : ''}
-            <div class="muted">${esc(def.description)}</div>
-            ${body}
+    return `<div class="sel-card">
+        <div class="row sel-head">
+            ${buildingArt(sim, b, 48)}
+            <div class="col" style="flex:1;min-width:0">
+                <h3>${def.name}</h3>
+                ${v ? `<div class="muted">${esc(v.name)}</div>` : ''}
+                ${b.built ? healthMeter(b.hp, max) : bar(b.progress * 100, '#5bc0ff', `Building ${Math.round(b.progress * 100)}%`)}
+                ${task ? `<div class="muted sel-order">${esc(task)}</div>` : ''}
+            </div>
         </div>
+        ${more ? `<div class="sel-more">${more}</div>` : ''}
+        ${detailsButton(open)}
     </div>`;
 };
 

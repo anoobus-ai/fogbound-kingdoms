@@ -40,7 +40,7 @@ export class GameUI {
     private modalTimer = 0;
     private modal: ModalView | null = null;
     private toastTimer: number | undefined;
-    private state: PanelState = { buildTab: 'economy', villagePanelId: null, villagePanelClosed: false };
+    private state: PanelState = { buildTab: 'economy', villagePanelId: null, villagePanelClosed: false, selectionDetails: false, selectionKey: '' };
     private handlers: Record<string, Handler>;
     private seenLog = 0;
     /** True while the selection panel is being replaced, so a name field blur does not save a half-typed name. */
@@ -399,6 +399,10 @@ export class GameUI {
                 }
             },
             stance: (el) => setStance(this.c.commandableSelection(), el.dataset.stance as Stance),
+            'toggle-details': () => {
+                this.state.selectionDetails = !this.state.selectionDetails;
+                this.refresh(true);
+            },
             stop: () => stopUnits(sim(), this.c.commandableSelection()),
             'build-tab': (el) => (this.state.buildTab = el.dataset.tab as PanelState['buildTab']),
             place: (el) => {

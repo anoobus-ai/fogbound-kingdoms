@@ -30,7 +30,7 @@ import { updateUnits } from './units';
 import { updateBuildings } from './buildings';
 import { updateVillages } from './villages';
 import { updatePolitics } from './politics';
-import { updateDiplomacy } from './diplomacy';
+import { initialStance, updateDiplomacy } from './diplomacy';
 import { updateWorld } from './world';
 import { updateFog } from './fog';
 
@@ -268,7 +268,7 @@ export class Sim {
             x,
             y,
             hp: this.maxHp(kind, faction),
-            stance: 'passive',
+            stance: initialStance(this, faction, kind),
             order: { type: 'idle' },
             path: [],
             pathTarget: '',
@@ -288,7 +288,6 @@ export class Sim {
             cargo: null,
             convertCooldownUntil: 0
         };
-        if (UNITS[kind].unitClass === 'bandit' || kind === 'wolf') u.stance = 'aggressive';
         this.state.units.push(u);
         this.unitById.set(u.id, u);
         return u;

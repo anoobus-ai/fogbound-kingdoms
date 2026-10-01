@@ -459,18 +459,30 @@ h4 {
 
 #selection {
     position: absolute;
-    left: 260px;
-    right: 400px;
-    bottom: 8px;
-    min-height: 150px;
-    max-height: 46vh;
+    left: 8px;
+    bottom: 284px;
+    width: 268px;
+    min-height: 0;
+    max-height: min(52vh, calc(100vh - 360px));
     overflow-y: auto;
     overflow-x: hidden;
     display: none;
+    border-width: 14px 12px 16px;
+    border-image: var(--wood) 128 / 14px 12px 16px stretch;
+    padding: 2px 4px 0;
 }
 
 #selection .muted {
     color: #e4d2b0;
+}
+
+#selection .meter {
+    height: 14px;
+}
+
+#selection .meter.health {
+    max-width: none;
+    height: 14px;
 }
 
 #selection h3,
@@ -479,17 +491,60 @@ h4 {
     text-shadow: 0 1px 0 #1a100a;
 }
 
+#selection h3 {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.2;
+}
+
+#selection .sel-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#selection .sel-head {
+    align-items: flex-start;
+}
+
+#selection .sel-order {
+    line-height: 1.25;
+}
+
+#selection .sel-more {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+#selection .avatar.sm {
+    width: 44px;
+    height: 44px;
+}
+
+#selection .building-art {
+    max-width: 64px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+#selection .details-toggle {
+    align-self: flex-start;
+    position: sticky;
+    bottom: 0;
+}
+
 #selection .hero-name {
     display: block;
     width: 100%;
-    max-width: 280px;
+    max-width: 100%;
     margin: 0 0 2px;
     padding: 0 2px 2px;
     border: none;
     border-bottom: 1px dashed rgba(255, 211, 77, 0.7);
     background: transparent;
     color: #fff6df;
-    font: 17px Georgia, 'Times New Roman', serif;
+    font: 15px Georgia, 'Times New Roman', serif;
     text-shadow: 0 1px 0 #1a100a;
     user-select: text;
     cursor: text;
@@ -771,8 +826,8 @@ table.grid th {
 
 #hint {
     position: absolute;
-    bottom: 285px;
-    left: 10px;
+    bottom: 16px;
+    left: 290px;
     color: #fff;
     text-shadow: 0 1px 2px #000;
     font-size: 12px;

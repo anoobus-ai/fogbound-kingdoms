@@ -9,6 +9,7 @@ import { joinKingdom, judge, resolveProposal, secede, startProposal } from './po
 import { VOTE_THRESHOLD } from '../data/balance';
 import { makePerson } from './people';
 import { createTradeRoute, issueMove, issueSmartCommand, sendMessenger } from './commands';
+import { setStatus } from './diplomacy';
 import { damageBuilding, killUnit } from './combat';
 import { carryCapacity } from './economy';
 import { startResearch } from './buildings';
@@ -326,5 +327,32 @@ describe('unit collision', () => {
                 expect(Math.hypot(pawns[i].x - pawns[j].x, pawns[i].y - pawns[j].y)).toBeGreaterThanOrEqual(0.7);
             }
         }
+    });
+});
+
+describe('war stance', () => {
+    it('sets soldiers and the hero to attack on sight when war starts, and new ones after that', () => {
+        const sim = newGame(3);
+        const explorer = sim.explorer()!;
+        const militia = sim.spawnUnit('militia', KINGDOM, null, explorer.x, explorer.y);
+        const pawn = sim.spawnUnit('pawn', KINGDOM, null, explorer.x, explorer.y);
+        const holding = sim.spawnUnit('warrior', KINGDOM, null, explorer.x, explorer.y);
+        holding.stance = 'hold';
+        expect(explorer.stance).toBe('passive');
+        expect(militia.stance).toBe('passive');
+
+        setStatus(sim, KINGDOM, 'v1', 'war');
+        expect(explorer.stance).toBe('aggressive');
+        expect(militia.stance).toBe('aggressive');
+        expect(pawn.stance).toBe('passive');
+        expect(holding.stance).toBe('hold');
+
+        const archer = sim.spawnUnit('archer', KINGDOM, null, explorer.x, explorer.y);
+        const villager = sim.spawnUnit('pawn', KINGDOM, null, explorer.x, explorer.y);
+        expect(archer.stance).toBe('aggressive');
+        expect(villager.stance).toBe('passive');
+
+        militia.stance = 'passive';
+        expect(militia.stance).toBe('passive');
     });
 });
