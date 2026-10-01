@@ -230,7 +230,7 @@ const renderOneUnit = (sim: Sim, u: Unit, state: PanelState, open: boolean): str
             ${portrait}
             <div class="col" style="flex:1;min-width:0">
                 ${name}
-                ${subtitle ? `<div class="muted">${esc(subtitle)}</div>` : ''}
+                ${subtitle && subtitle !== def.name ? `<div class="muted">${esc(subtitle)}</div>` : ''}
                 ${healthMeter(u.hp, sim.maxHp(u.kind))}
                 <div class="muted sel-order">${describeOrder(sim, u)}${esc(carry)}</div>
                 ${u.faction === KINGDOM && !commandable ? '<span class="chip neutral">Out of range</span>' : ''}
