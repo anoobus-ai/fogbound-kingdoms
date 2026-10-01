@@ -24,7 +24,7 @@ import {
     talkAction
 } from '../sim/commands';
 import type { AgendaId, BuildingKind, MessengerOrder, NeedId, ResourceType, Stance, TechId, UnitKind } from '../sim/types';
-import { cursorCss, denyCursorCss, esc, handCursorCss, icon, installNineSlices } from './dom';
+import { cursorCss, denyCursorCss, esc, handCursorCss, icon, installNineSlices, setHtml } from './dom';
 import { Minimap } from './minimap';
 import { isLive, renderModal, type ModalView } from './modals';
 import { panelVillage, renderSelection, renderTopbar, renderVillage, type PanelState } from './panels';
@@ -189,7 +189,10 @@ export class GameUI {
         const heroEdit = key === 'selection' && this.keepHeroFocus ? this.heroNameEdit() : null;
         this.cache.set(key, html);
         this.rewritingSelection = key === 'selection';
-        el.innerHTML = html;
+        // The log feed is replaced whole so a new line can play its slide-in. Everything else is patched
+        // so portrait images stay put while stats and orders change.
+        if (key === 'feed') el.innerHTML = html;
+        else setHtml(el, html);
         this.rewritingSelection = false;
         if (heroEdit) this.restoreHeroNameEdit(heroEdit);
     }

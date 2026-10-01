@@ -379,15 +379,98 @@ const slideTo = (sim: Sim, u: Unit, nx: number, ny: number): boolean => {
     return u.x !== ox || u.y !== oy;
 };
 
-/** Returns true when the point has been reached. Slides along walls instead of entering them. */
+/** Pulls a walker toward the middle of a one-tile gap so they don't clip the walls. */
+const laneBias = (sim: Sim, u: Unit, vx: number, vy: number, step: number): { x: number; y: number } => {
+    const tileX = Math.floor(u.x);
+    const tileY = Math.floor(u.y);
+    const open = (x: number, y: number) => sim.walkable(u.faction, x, y);
+    let bx = vx;
+    let by = vy;
+    if (!open(tileX - 1, tileY) && !open(tileX + 1, tileY)) bx += (tileX + 0.5 - u.x) * 0.65;
+    if (!open(tileX, tileY - 1) && !open(tileX, tileY + 1)) by += (tileY + 0.5 - u.y) * 0.65;
+    const spd = Math.hypot(bx, by);
+    if (spd > step && spd > 0) {
+        bx *= step / spd;
+        by *= step / spd;
+    }
+    return { x: bx, y: by };
+};
+
+/**
+ * The unit closer to the waypoint goes first. Ties break toward the lower id
+ * so two sprites never both wait.
+ */
+const yieldsTo = (u: Unit, o: Unit, tx: number, ty: number): boolean => {
+    const mine = Math.hypot(u.x - tx, u.y - ty);
+    const theirs = Math.hypot(o.x - tx, o.y - ty);
+    if (Math.abs(mine - theirs) <= 0.02) return u.id > o.id;
+    return theirs < mine;
+};
+
+/** Returns true when the point has been reached. Queues behind other walkers and slides along walls. */
 const stepToward = (sim: Sim, u: Unit, tx: number, ty: number, dt: number): boolean => {
     const dx = tx - u.x;
     const dy = ty - u.y;
     const d = Math.hypot(dx, dy);
     if (d < 0.05) return true;
     const step = Math.min(d, speedOf(sim, u) * dt);
-    const wantX = u.x + (dx / d) * step;
-    const wantY = u.y + (dy / d) * step;
+    const biased = laneBias(sim, u, (dx / d) * step, (dy / d) * step, step);
+    let vx = biased.x;
+    let vy = biased.y;
+    const ru = bodyRadius(u.kind);
+    nearby.length = 0;
+    sim.spatial.query(u.x, u.y, ru + 0.6, nearby);
+    for (const o of nearby) {
+        if (o.id === u.id) continue;
+        let ox = o.x - u.x;
+        let oy = o.y - u.y;
+        let od = Math.hypot(ox, oy);
+        const min = ru + bodyRadius(o.kind);
+        if (od >= min + step) continue;
+        if (od < 0.001) {
+            const a = ((u.id * 13 + o.id) % 8) * (Math.PI / 4);
+            ox = Math.cos(a);
+            oy = Math.sin(a);
+            od = 0;
+        }
+        const nx = od === 0 ? ox : ox / od;
+        const ny = od === 0 ? oy : oy / od;
+        const into = vx * nx + vy * ny;
+        if (o.path.length === 0) {
+            const shove = Math.min(0.05, Math.max(0.02, min - od));
+            if (!pushOut(sim, o, nx * shove, ny * shove)) {
+                pushOut(sim, o, -ny * shove, nx * shove) || pushOut(sim, o, ny * shove, -nx * shove);
+            }
+            const nd = Math.hypot(o.x - u.x, o.y - u.y);
+            if (nd < min && into > 0) {
+                vx -= nx * into;
+                vy -= ny * into;
+            }
+            continue;
+        }
+        if (!yieldsTo(u, o, tx, ty)) continue;
+        if (od < min) {
+            vx = 0;
+            vy = 0;
+            break;
+        }
+        if (into > 0) {
+            const allow = od - min;
+            const cut = into - allow;
+            if (cut > 0) {
+                vx -= nx * cut;
+                vy -= ny * cut;
+            }
+        }
+    }
+    const spd = Math.hypot(vx, vy);
+    if (spd < 0.004) return false;
+    if (spd > step) {
+        vx *= step / spd;
+        vy *= step / spd;
+    }
+    const wantX = u.x + vx;
+    const wantY = u.y + vy;
     const moved = slideTo(sim, u, wantX, wantY);
     if (!moved) return false;
     if (Math.abs(dx) > 0.02) u.facing = dx < 0 ? -1 : 1;
@@ -422,8 +505,15 @@ const separate = (sim: Sim) => {
                 const overlap = Math.min(min - gap, 0.8);
                 const nx = dx / d;
                 const ny = dy / d;
-                const traveling = u.path.length > 0 || o.path.length > 0;
-                let share = Math.min(overlap * 0.5, traveling ? 0.04 : 0.12);
+                if (u.path.length > 0 && o.path.length > 0) {
+                    // Single file: ease the trailer back and leave the leader's step alone.
+                    const wp = u.path[0];
+                    const trailer = Math.hypot(u.x - wp.x, u.y - wp.y) <= Math.hypot(o.x - wp.x, o.y - wp.y) ? o : u;
+                    const dir = trailer === u ? -1 : 1;
+                    pushOut(sim, trailer, nx * dir * Math.min(overlap, 0.05), ny * dir * Math.min(overlap, 0.05));
+                    continue;
+                }
+                let share = Math.min(overlap * 0.5, 0.12);
                 if (!pushOut(sim, u, -nx * share, -ny * share)) share = Math.min(overlap, 0.2);
                 const rest = Math.min(overlap - share, 0.2);
                 if (!pushOut(sim, o, nx * share, ny * share) && rest > 0) pushOut(sim, u, -nx * rest, -ny * rest);

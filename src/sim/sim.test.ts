@@ -8,7 +8,7 @@ import { KINGDOM } from './types';
 import { joinKingdom, judge, resolveProposal, secede, startProposal } from './politics';
 import { VOTE_THRESHOLD } from '../data/balance';
 import { makePerson } from './people';
-import { createTradeRoute, issueSmartCommand, sendMessenger } from './commands';
+import { createTradeRoute, issueMove, issueSmartCommand, sendMessenger } from './commands';
 import { damageBuilding, killUnit } from './combat';
 import { carryCapacity } from './economy';
 import { startResearch } from './buildings';
@@ -278,6 +278,30 @@ describe('unit collision', () => {
         for (let i = 0; i < 60; i++) {
             sim.update(1 / 20);
             expect(sim.isSolidAt(Math.floor(pawn.x), Math.floor(pawn.y))).toBe(false);
+        }
+    });
+
+    it('files a group through a one-tile gap instead of piling up', () => {
+        const sim = newGame(4);
+        const e = sim.explorer()!;
+        const map = sim.state.map;
+        const x = Math.floor(e.x) + 6;
+        const y = Math.floor(e.y);
+        for (let dy = -3; dy <= 3; dy++) {
+            for (let dx = -4; dx <= 4; dx++) sim.solid[idx(map, x + dx, y + dy)] = dx === 0 && dy !== 0 ? 1 : 0;
+        }
+        const pawns = [];
+        for (let i = 0; i < 4; i++) pawns.push(sim.spawnUnit('pawn', KINGDOM, null, x - 2.2, y + 0.5 + (i - 1.5) * 0.35));
+        issueMove(sim, pawns, x + 3.5, y + 0.5);
+        run(sim, 12);
+        for (const p of pawns) {
+            expect(p.x).toBeGreaterThan(x + 0.2);
+            expect(sim.isSolidAt(Math.floor(p.x), Math.floor(p.y))).toBe(false);
+        }
+        for (let i = 0; i < pawns.length; i++) {
+            for (let j = i + 1; j < pawns.length; j++) {
+                expect(Math.hypot(pawns[i].x - pawns[j].x, pawns[i].y - pawns[j].y)).toBeGreaterThanOrEqual(0.7);
+            }
         }
     });
 

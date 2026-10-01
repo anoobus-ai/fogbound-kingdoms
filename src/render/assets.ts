@@ -170,8 +170,6 @@ sheet('fx-dead', oldUrl('Factions/Knights/Troops/Dead/Dead.png'), 128);
 anim('fx-dead', 'fx-dead', 14, { repeat: 0, fps: 10 });
 images.push({ key: 'arrow', url: freeUrl('Units/Blue Units/Archer/Arrow.png') });
 
-// ---------- UI pieces used inside the game world ----------
-images.push({ key: 'bar-base', url: freeUrl('UI Elements/UI Elements/Bars/SmallBar_Base.png') });
 
 export const SOUND_FILES: Record<SoundId, string> = {
     click: 'click',

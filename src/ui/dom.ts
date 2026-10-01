@@ -89,9 +89,72 @@ export const unitPortrait = (kind: UnitKind, color: TeamColor, size = 64): strin
     return `<div class="portrait" style="width:${size}px;height:${size}px;${style}"></div>`;
 };
 
-export const bar = (value: number, color: string, label = '', className = ''): string =>
-    `<div class="meter${className ? ` ${className}` : ''}" title="${esc(label)}"><div class="meter-fill" style="width:${Math.max(0, Math.min(100, value))}%;background:${color}"></div><span>${esc(label)}</span></div>`;
+export const bar = (value: number, color: string, label = '', className = ''): string => {
+    const pct = Math.max(0, Math.min(100, Math.round(value)));
+    return `<div class="meter${className ? ` ${className}` : ''}" title="${esc(label)}"><div class="meter-fill" style="width:${pct}%;background:${color}"></div><span>${esc(label)}</span></div>`;
+};
 
+/**
+ * Swap in new markup without recreating nodes that are already the same.
+ * Replacing the whole panel reloads the portrait images and they blink.
+ */
+export const setHtml = (host: HTMLElement, html: string): void => {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html;
+    morphChildren(host, tpl.content);
+};
+
+const compatible = (have: Node, want: Node): boolean => {
+    if (have.nodeType !== want.nodeType) return false;
+    if (have instanceof Element && want instanceof Element) return have.tagName === want.tagName;
+    return true;
+};
+
+const syncAttrs = (have: Element, want: Element) => {
+    const focused = have instanceof HTMLInputElement && document.activeElement === have;
+    for (const name of have.getAttributeNames()) {
+        if (!want.hasAttribute(name)) have.removeAttribute(name);
+    }
+    for (const name of want.getAttributeNames()) {
+        if (focused && name === 'value') continue;
+        const value = want.getAttribute(name);
+        if (value !== null && have.getAttribute(name) !== value) have.setAttribute(name, value);
+    }
+    if (have instanceof HTMLInputElement && want instanceof HTMLInputElement && !focused && have.value !== want.value) have.value = want.value;
+};
+
+const morphChildren = (current: Node, next: Node) => {
+    const have = Array.from(current.childNodes);
+    const want = Array.from(next.childNodes);
+    const n = Math.max(have.length, want.length);
+    for (let i = 0; i < n; i++) {
+        const a = have[i];
+        const b = want[i];
+        if (!b) {
+            a?.remove();
+            continue;
+        }
+        if (!a || !compatible(a, b)) {
+            const fresh = b.cloneNode(true);
+            if (a) a.replaceWith(fresh);
+            else current.appendChild(fresh);
+            continue;
+        }
+        if (a.nodeType === Node.TEXT_NODE) {
+            if (a.textContent !== b.textContent) a.textContent = b.textContent;
+            continue;
+        }
+        if (a instanceof Element && b instanceof Element) {
+            syncAttrs(a, b);
+            morphChildren(a, b);
+            continue;
+        }
+        a.replaceWith(b.cloneNode(true));
+    }
+};
+
+/** Vivid red, hotter once wounded, and still red when nearly dead. */
+export const healthColor = (pct: number): string => (pct > 65 ? '#ff1f1f' : pct > 35 ? '#ff5a22' : '#ff2a1a');
 export const moodColor = (v: number): string => (v >= 65 ? '#5fd35a' : v >= 40 ? '#e8c547' : '#e0463c');
 export const unrestColor = (v: number): string => (v >= 75 ? '#e0463c' : v >= 45 ? '#e89a3c' : '#5fd35a');
 

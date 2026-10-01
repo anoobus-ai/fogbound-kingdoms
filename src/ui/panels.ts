@@ -14,7 +14,7 @@ import { popCap, population } from '../sim/buildings';
 import { NEED_IDS, needWeights } from '../sim/villages';
 import { agendaAlignment, factionName } from '../sim/politics';
 import { popularity } from '../sim/people';
-import { bar, costHtml, esc, icon, moodColor, personAvatar, resIcon, unitPortrait, unrestColor } from './dom';
+import { bar, costHtml, esc, healthColor, icon, moodColor, personAvatar, resIcon, unitPortrait, unrestColor } from './dom';
 
 export interface PanelState {
     buildTab: Exclude<BuildCategory, 'hidden' | 'core'>;
@@ -23,6 +23,11 @@ export interface PanelState {
 }
 
 const fmt = (n: number) => Math.floor(n).toLocaleString();
+
+const healthMeter = (current: number, max: number) => {
+    const pct = max > 0 ? (current / max) * 100 : 0;
+    return bar(pct, healthColor(pct), `Health ${Math.ceil(current)} / ${max}`, pct <= 35 ? 'health critical' : 'health');
+};
 
 // ---------- top bar ----------
 
@@ -180,7 +185,7 @@ const renderOneUnit = (sim: Sim, u: Unit, state: PanelState): string => {
             ${u.kind === 'explorer' ? title : `<h3>${title} ${leader}</h3>`}
             ${namedHero ? '<div class="muted">Explorer</div>' : ''}
             <div class="row wrap">${relationChip(sim, u.faction)} ${traitChips(u)}</div>
-            ${bar((u.hp / sim.maxHp(u.kind)) * 100, '#5fd35a', `Health ${Math.ceil(u.hp)} / ${sim.maxHp(u.kind)}`, 'health')}
+            ${healthMeter(u.hp, sim.maxHp(u.kind))}
             ${u.person ? bar(u.person.mood, moodColor(u.person.mood), `Mood ${Math.round(u.person.mood)}`) : ''}
             <div class="muted">${describeOrder(sim, u)}${carry} · ${esc(def.description)}</div>
             ${u.faction !== KINGDOM && def.damage ? `<div class="muted">⚔ ${def.damage} dmg · 🛡 ${def.armor} armor · range ${def.range}</div>` : ''}
@@ -292,7 +297,7 @@ const renderBuilding = (sim: Sim, b: Building): string => {
         <div class="col" style="flex:1">
             <h3>${def.name}${v ? ` <span class="muted">— ${esc(v.name)}</span>` : ''}</h3>
             <div class="row wrap">${relationChip(sim, b.faction)}</div>
-            ${b.built ? bar((b.hp / max) * 100, '#5fd35a', `Health ${Math.ceil(b.hp)} / ${max}`, 'health') : ''}
+            ${b.built ? healthMeter(b.hp, max) : ''}
             <div class="muted">${esc(def.description)}</div>
             ${body}
         </div>

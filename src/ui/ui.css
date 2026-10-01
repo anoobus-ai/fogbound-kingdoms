@@ -171,7 +171,21 @@
 }
 
 .meter.health {
-    max-width: 200px;
+    max-width: 220px;
+    height: 18px;
+    background: #1a0909;
+    border-color: #6e1818;
+}
+
+.meter.health.critical {
+    animation: hp-warn 0.45s steps(2, end) infinite;
+}
+
+@keyframes hp-warn {
+    50% {
+        border-color: #fff1f1;
+        box-shadow: 0 0 8px #ff2a2a;
+    }
 }
 
 .meter-fill {

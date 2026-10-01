@@ -4,9 +4,7 @@ import { TILE } from '../data/balance';
 import { biomeAt, idx } from '../sim/map';
 import type { Sim } from '../sim/sim';
 import {
-    BANDIT,
     KINGDOM,
-    WILD,
     type Building,
     type FactionId,
     type ResourceNode,
@@ -16,12 +14,20 @@ import {
 import { autotile, COLS, DEPTH, ROW } from './terrain';
 
 const BAR_DEPTH = DEPTH.fog - 10;
-/**
- * SmallBar_Base.png is three pieces with gaps. `slot*` is the open interior of the
- * packed frame, in source pixels, where the coloured fill has to sit.
- * The sheet paints that interior opaque navy, so the fill is drawn over it.
- */
-const BAR_FRAME = { cap: 15, mid: 64, h: 19, top: 22, scale: 0.6, slotX: 6, slotY: 5, slotH: 9 } as const;
+const BAR_H = 9;
+
+const lerpColor = (a: number, b: number, t: number): number => {
+    const mix = (from: number, to: number) => Math.round(from + (to - from) * t);
+    return (mix((a >> 16) & 255, (b >> 16) & 255) << 16) | (mix((a >> 8) & 255, (b >> 8) & 255) << 8) | mix(a & 255, b & 255);
+};
+
+/** Vivid red while healthy, hotter once wounded, flashing brighter when about to die. */
+const hpLook = (frac: number, now: number): { color: number; critical: boolean } => {
+    if (frac > 0.65) return { color: 0xff1f1f, critical: false };
+    if (frac > 0.35) return { color: 0xff5a22, critical: false };
+    const pulse = 0.5 + 0.5 * Math.sin(now * (frac < 0.15 ? 0.022 : 0.013));
+    return { color: lerpColor(0xff120c, 0xff6a55, pulse), critical: true };
+};
 
 interface UnitView {
     sprite: Phaser.GameObjects.Sprite;
@@ -59,26 +65,9 @@ export class EntityRenderer {
     private rings: Phaser.GameObjects.Graphics;
     private camp = new Map<number, Phaser.GameObjects.Sprite>();
 
-    private frames: Phaser.GameObjects.NineSlice[] = [];
-    private framesUsed = 0;
-
     constructor(private readonly scene: Phaser.Scene, private sim: Sim) {
         this.bars = scene.add.graphics().setDepth(BAR_DEPTH + 2);
         this.rings = scene.add.graphics().setDepth(DEPTH.decals + 1);
-        this.buildBarFrame();
-    }
-
-    /** Packs the Tiny Swords small bar (caps and middle are spread apart in the sheet) into one stretchable frame. */
-    private buildBarFrame() {
-        if (this.scene.textures.exists('hp-frame')) return;
-        const src = this.scene.textures.get('bar-base').getSourceImage() as HTMLImageElement;
-        const canvas = this.scene.textures.createCanvas('hp-frame', BAR_FRAME.cap * 2 + BAR_FRAME.mid, BAR_FRAME.h)!;
-        const ctx = canvas.getContext();
-        const { cap, mid, h, top } = BAR_FRAME;
-        ctx.drawImage(src, 49, top, cap, h, 0, 0, cap, h);
-        ctx.drawImage(src, 128, top, mid, h, cap, 0, mid, h);
-        ctx.drawImage(src, 256, top, cap, h, cap + mid, 0, cap, h);
-        canvas.refresh();
     }
 
     setSim(sim: Sim) {
@@ -525,7 +514,6 @@ export class EntityRenderer {
         const rings = this.rings;
         g.clear();
         rings.clear();
-        this.framesUsed = 0;
         const cam = this.scene.cameras.main;
         const view = cam.worldView;
         const margin = 128;
@@ -550,7 +538,7 @@ export class EntityRenderer {
             }
             if (u.hp < max || selected || sel.hover === u.id) {
                 const top = u.kind === 'explorer' ? 86 : u.kind === 'lancer' ? 62 : u.kind === 'sheep' ? 34 : u.kind === 'wolf' || u.kind === 'bear' ? 46 : 52;
-                this.bar(g, px, py - top, 42, u.hp / max, this.barColor(u.faction));
+                this.bar(g, px, py - top, 50, u.hp / max, 'health');
             }
         }
 
@@ -571,44 +559,49 @@ export class EntityRenderer {
             if (!b.built) {
                 this.bar(g, cx, top, w, b.progress, 0x5bc0ff);
             } else if (b.hp < max || selected || sel.hover === b.id) {
-                this.bar(g, cx, top, w, b.hp / max, this.barColor(b.faction));
+                this.bar(g, cx, top, w, b.hp / max, 'health');
             }
-            if (b.queue.length && b.faction === KINGDOM) this.bar(g, cx, top + 12, w * 0.8, b.queue[0].progress, 0xffd34d);
+            if (b.queue.length && b.faction === KINGDOM) this.bar(g, cx, top + 14, w * 0.8, b.queue[0].progress, 0xffd34d);
         }
-        for (let i = this.framesUsed; i < this.frames.length; i++) this.frames[i].setVisible(false);
     }
 
-    private barColor(faction: FactionId): number {
-        if (faction === KINGDOM) return 0x5fd35a;
-        if (faction === BANDIT || this.sim.hostileFactions(KINGDOM, faction)) return 0xe0463c;
-        if (faction === WILD) return 0xd9a441;
-        return 0xe8c547;
-    }
-
-    /** Health bar: coloured fill in the slot of the Tiny Swords bar frame. */
-    private bar(g: Phaser.GameObjects.Graphics, cx: number, y: number, w: number, frac: number, color: number) {
-        const { scale, h, cap, slotX, slotY, slotH } = BAR_FRAME;
-        const pad = slotX * scale;
-        const x = cx - w / 2;
-        const innerW = Math.max(0, w - pad * 2);
-        const fillY = y + slotY * scale;
-        const fillH = slotH * scale;
-        const fw = Math.max(0, Math.min(1, frac)) * innerW;
-        g.fillStyle(0x1b1410, 1);
-        g.fillRect(x + pad, fillY, innerW, fillH);
-        g.fillStyle(color, 1);
-        g.fillRect(x + pad, fillY, fw, fillH);
-        g.fillStyle(0xffffff, 0.35);
-        g.fillRect(x + pad, fillY, fw, Math.max(1, fillH * 0.28));
-
-        let frame = this.frames[this.framesUsed];
-        if (!frame) {
-            frame = this.scene.add.nineslice(0, 0, 'hp-frame', undefined, 100, h, cap, cap, 0, 0).setOrigin(0, 0).setScale(scale).setDepth(BAR_DEPTH);
-            this.frames.push(frame);
+    /**
+     * Flat bar with a dark track so the missing portion is obvious.
+     * Health bars stay red and flash once the subject is close to dying.
+     */
+    private bar(g: Phaser.GameObjects.Graphics, cx: number, y: number, w: number, frac: number, color: number | 'health') {
+        const f = Math.max(0, Math.min(1, frac));
+        const now = this.scene.time.now;
+        let fill: number;
+        let critical = false;
+        if (color === 'health') {
+            const look = hpLook(f, now);
+            fill = look.color;
+            critical = look.critical;
+        } else {
+            fill = color;
         }
-        this.framesUsed++;
-        frame.setVisible(true);
-        frame.setSize(w / scale, h);
-        frame.setPosition(x, y);
+        const health = color === 'health';
+        const h = BAR_H;
+        const x = Math.round(cx - w / 2);
+        const top = Math.round(y);
+
+        if (critical) {
+            const pulse = 0.5 + 0.5 * Math.sin(now * (f < 0.15 ? 0.022 : 0.013));
+            g.fillStyle(0xff2020, 0.18 + pulse * 0.55);
+            g.fillRect(x - 3, top - 3, w + 6, h + 6);
+        }
+        g.fillStyle(0x000000, 0.55);
+        g.fillRect(x - 1, top + 1, w + 2, h + 2);
+        g.fillStyle(0x0c0606, 1);
+        g.fillRect(x - 1, top - 1, w + 2, h + 2);
+        g.fillStyle(health ? 0x5c1a1a : 0x24160f, 1);
+        g.fillRect(x, top, w, h);
+        const fw = f <= 0 ? 0 : Math.min(w, Math.max(health ? 2 : 1, Math.round(f * w)));
+        if (fw <= 0) return;
+        g.fillStyle(fill, 1);
+        g.fillRect(x, top, fw, h);
+        g.fillStyle(0xffffff, critical ? 0.28 : 0.4);
+        g.fillRect(x, top, fw, 2);
     }
 }
