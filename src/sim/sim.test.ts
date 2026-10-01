@@ -3,7 +3,7 @@ import { idx } from './map';
 import { generateWorld } from './mapgen';
 import { Pathfinder } from './pathfinding';
 import { newGame } from './create';
-import { deserialize, serialize } from './save';
+import { deserialize, openSaveText, saveFileName, serialize } from './save';
 import { KINGDOM } from './types';
 import { joinKingdom, judge, resolveProposal, secede, startProposal } from './politics';
 import { VOTE_THRESHOLD } from '../data/balance';
@@ -78,6 +78,16 @@ describe('game simulation', () => {
         expect(copy.state.buildings.length).toBe(sim.state.buildings.length);
         expect(Array.from(copy.state.map.block)).toEqual(Array.from(sim.state.map.block));
         run(copy, 10);
+    });
+
+    it('names a downloaded save and opens that same file', () => {
+        const sim = newGame(77);
+        expect(saveFileName(sim.day, 2)).toBe('fogbound-slot-2-day-1.json');
+        expect(saveFileName(12.8)).toBe('fogbound-day-12.json');
+        const copy = openSaveText(serialize(sim.state));
+        expect(copy.state.seed).toBe(sim.state.seed);
+        expect(() => openSaveText('not a save')).toThrow(/not a Fogbound Kingdoms save/);
+        expect(() => openSaveText('{"version":2}')).toThrow(/incompatible version/);
     });
 
     it('lets a camp join and grow into a village with a town center', () => {

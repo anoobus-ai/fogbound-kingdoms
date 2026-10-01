@@ -69,9 +69,27 @@ export const saveToSlot = (sim: Sim, slot: number) => {
     localStorage.setItem(`${SLOT_PREFIX}${slot}-info`, JSON.stringify(info));
 };
 
+export const slotSaveText = (slot: number): string | null => localStorage.getItem(SLOT_PREFIX + slot);
+
 export const loadFromSlot = (slot: number): Sim | null => {
-    const data = localStorage.getItem(SLOT_PREFIX + slot);
+    const data = slotSaveText(slot);
     return data ? deserialize(data) : null;
+};
+
+/** Turns the text of a downloaded save into a game, or explains why the file cannot be opened. */
+export const openSaveText = (json: string): Sim => {
+    try {
+        return deserialize(json);
+    } catch (err) {
+        if (err instanceof Error && err.message.includes('incompatible version')) throw err;
+        throw new Error('That file is not a Fogbound Kingdoms save.');
+    }
+};
+
+/** File name for a downloaded save, so it is easy to tell games apart on another computer. */
+export const saveFileName = (day: number, slot?: number): string => {
+    const dayPart = `day-${Math.max(1, Math.floor(day))}`;
+    return slot ? `fogbound-slot-${slot}-${dayPart}.json` : `fogbound-${dayPart}.json`;
 };
 
 export const slotInfo = (slot: number): SaveSlotInfo | null => {

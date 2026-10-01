@@ -56,7 +56,7 @@ export const renderModal = (sim: Sim, m: ModalView): { html: string; cls: string
         case 'log':
             return { html: logHtml(sim), cls: 'scroll wide' };
         case 'menu':
-            return { html: menuHtml(sim), cls: 'scroll' };
+            return { html: menuHtml(sim), cls: 'scroll wide' };
         case 'help':
             return { html: helpHtml(), cls: 'scroll wide' };
         default: {
@@ -346,12 +346,23 @@ const menuHtml = (sim: Sim): string => {
         .map((s) => {
             const info = slotInfo(s);
             return `<tr><td><b>Slot ${s}</b><br><span class="muted">${info ? `Day ${info.day}, ${info.villages} villages — ${esc(info.savedAt)}` : 'Empty'}</span></td>
-                <td><button class="btn small" data-action="save" data-slot="${s}">Save</button> <button class="btn small ${info ? '' : 'disabled'}" data-action="load" data-slot="${s}">Load</button></td></tr>`;
+                <td><div class="row wrap">
+                    <button class="btn small" data-action="save" data-slot="${s}">Save</button>
+                    <button class="btn small ${info ? '' : 'disabled'}" data-action="load" data-slot="${s}">Load</button>
+                    <button class="btn small ${info ? '' : 'disabled'}" data-action="download" data-slot="${s}" title="Download this save to open it on another computer">Download</button>
+                </div></td></tr>`;
         })
         .join('');
     const st = sim.state.settings;
     return `${close}<h2>⚙ Menu</h2>
         <h4>Save & load</h4><table class="grid">${slots}</table>
+        <div class="row wrap" style="margin-top:8px">
+            <button class="btn small" data-action="download-current" title="Download the game you are playing right now">Download this game</button>
+            <label class="btn small" title="Open a save file from this or another computer">Open a save file
+                <input id="import-save" type="file" accept=".json,application/json" hidden>
+            </label>
+        </div>
+        <div class="muted">Download a save, then use Open a save file on another computer to keep playing it.</div>
         <h4>New world</h4>
         <div class="row"><span>Seed</span><input id="seed-input" type="number" value="${sim.state.seed}" style="width:120px">
         <button class="btn small" data-action="new-game">Start</button><button class="btn small" data-action="new-random">Random world</button></div>
