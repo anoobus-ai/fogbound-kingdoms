@@ -44,21 +44,21 @@ export const renderModal = (sim: Sim, m: ModalView): { html: string; cls: string
         case 'appoint':
             return { html: appointHtml(sim, m.villageId, false), cls: 'scroll' };
         case 'messenger':
-            return { html: messengerHtml(sim, m.villageId), cls: 'paper' };
+            return { html: messengerHtml(sim, m.villageId), cls: 'scroll' };
         case 'talk':
-            return { html: talkHtml(sim, m.villageId), cls: 'paper' };
+            return { html: talkHtml(sim, m.villageId), cls: 'scroll' };
         case 'kingdom':
-            return { html: kingdomHtml(sim), cls: 'paper wide' };
+            return { html: kingdomHtml(sim), cls: 'scroll wide' };
         case 'diplomacy':
-            return { html: diplomacyHtml(sim), cls: 'paper wide' };
+            return { html: diplomacyHtml(sim), cls: 'scroll wide' };
         case 'agenda':
-            return { html: agendaHtml(sim, m.draft), cls: 'paper wide' };
+            return { html: agendaHtml(sim, m.draft), cls: 'scroll wide' };
         case 'log':
-            return { html: logHtml(sim), cls: 'paper wide' };
+            return { html: logHtml(sim), cls: 'scroll wide' };
         case 'menu':
-            return { html: menuHtml(sim), cls: 'paper' };
+            return { html: menuHtml(sim), cls: 'scroll' };
         case 'help':
-            return { html: helpHtml(), cls: 'paper wide' };
+            return { html: helpHtml(), cls: 'scroll wide' };
         default: {
             const never: never = m;
             throw new Error(`Unknown modal ${JSON.stringify(never)}`);
@@ -71,11 +71,11 @@ const renderRequest = (sim: Sim, req: UiRequest): { html: string; cls: string } 
         case 'appointLeader':
             return { html: appointHtml(sim, req.villageId, true), cls: 'scroll' };
         case 'vote':
-            return { html: voteHtml(sim, req.villageId), cls: 'paper' };
+            return { html: voteHtml(sim, req.villageId), cls: 'scroll' };
         case 'exiled': {
             const v = sim.village(req.villageId);
             return {
-                cls: 'paper exiled',
+                cls: 'scroll exiled',
                 html: `${close}<h2>Exiled from ${esc(v?.name ?? 'the village')}!</h2>
                     <p>The people have turned against you. Their reasons:</p>
                     <ul>${req.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
@@ -90,7 +90,7 @@ const renderRequest = (sim: Sim, req: UiRequest): { html: string; cls: string } 
             const v = sim.village(req.villageId);
             const leader = v ? sim.unitById.get(v.leaderId ?? -1) : undefined;
             return {
-                cls: 'paper',
+                cls: 'scroll',
                 html: `${close}<h2>Welcome back to ${esc(v?.name ?? '')}</h2>
                     ${leader?.person ? `<div class="row">${personAvatar(leader.person.avatar)}<div><b>${esc(leader.person.name)}</b> ruled while you were away.<br>${traitList(leader.person.traits)}</div></div>` : ''}
                     <h4>What happened</h4><ul>${req.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
@@ -100,14 +100,14 @@ const renderRequest = (sim: Sim, req: UiRequest): { html: string; cls: string } 
             };
         }
         case 'talk':
-            return { html: talkHtml(sim, req.villageId), cls: 'paper' };
+            return { html: talkHtml(sim, req.villageId), cls: 'scroll' };
         case 'event':
-            return { cls: 'paper', html: `${close}<h2>${esc(req.title)}</h2><p>${esc(req.text)}</p><div class="modal-actions"><button class="btn" data-action="close-modal">OK</button></div>` };
+            return { cls: 'scroll', html: `${close}<h2>${esc(req.title)}</h2><p>${esc(req.text)}</p><div class="modal-actions"><button class="btn" data-action="close-modal">OK</button></div>` };
         case 'merchant': {
             const v = sim.village(req.villageId);
             const deals = MERCHANT_DEALS.map((d, i) => `<button class="btn" data-action="merchant" data-id="${req.villageId}" data-index="${i}">${esc(d.label)}</button>`).join('');
             return {
-                cls: 'paper',
+                cls: 'scroll',
                 html: `${close}<h2>A traveling merchant</h2><p>A merchant has set up a stall in ${esc(v?.name ?? '')}. Trades use ${esc(v?.name ?? '')}'s stores.</p>
                     ${v ? `<div class="row">${costHtml(v.stock)}</div>` : ''}
                     <div class="modal-actions">${deals}</div><div class="modal-actions"><button class="btn red" data-action="close-modal">Send them on their way</button></div>`
