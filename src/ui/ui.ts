@@ -4,7 +4,7 @@ import type { Controller } from '../game/controller';
 import type { WorldScene } from '../scenes/WorldScene';
 import type { SoundManager } from '../audio/sound';
 import { randomSeed } from '../sim/rng';
-import { loadFromSlot, saveToSlot } from '../sim/save';
+import { loadFromSlot, openSaveText, saveFileName, saveToSlot, serialize, slotInfo, slotSaveText } from '../sim/save';
 import { MAX_AGENDA } from '../data/techs';
 import { cancelQueued } from '../sim/buildings';
 import {
@@ -346,8 +346,26 @@ export class GameUI {
                 st.pauseOnPopup = t.checked;
                 this.syncPauseMark();
                 break;
+            case 'import-save': {
+                const file = t.files?.[0] ?? null;
+                t.value = '';
+                void this.importSaveFile(file);
+                break;
+            }
             default:
                 break;
+        }
+    }
+
+    private async importSaveFile(file: File | null) {
+        if (!file) return;
+        try {
+            const loaded = openSaveText(await file.text());
+            this.c.setSim(loaded);
+            this.toast('Game loaded from file.', 'good');
+        } catch (err) {
+            this.toast(err instanceof Error ? err.message : 'Could not open that save file.', 'bad');
+            this.sound.play('error');
         }
     }
 
@@ -541,6 +559,17 @@ export class GameUI {
                     this.toast('Game loaded.', 'good');
                 }
             },
+            download: (el) => {
+                const slot = num(el, 'slot');
+                const data = slotSaveText(slot);
+                if (!data) return;
+                downloadTextFile(saveFileName(slotInfo(slot)?.day ?? sim().day, slot), data);
+                this.toast('Save file downloaded.', 'good');
+            },
+            'download-current': () => {
+                downloadTextFile(saveFileName(sim().day), serialize(sim().state));
+                this.toast('Save file downloaded.', 'good');
+            },
             'new-game': () => {
                 const input = this.root.querySelector<HTMLInputElement>('#seed-input');
                 this.scene.startNewGame(Number(input?.value) || randomSeed());
@@ -554,3 +583,16 @@ export class GameUI {
         this.renderModal();
     }
 }
+
+const downloadTextFile = (filename: string, text: string) => {
+    const blob = new Blob([text], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
