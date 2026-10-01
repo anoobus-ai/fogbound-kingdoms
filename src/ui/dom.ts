@@ -85,8 +85,8 @@ export const unitPortrait = (kind: UnitKind, color: TeamColor, size = 64): strin
     return `<div class="portrait" style="width:${size}px;height:${size}px;${style}"></div>`;
 };
 
-export const bar = (value: number, color: string, label = ''): string =>
-    `<div class="meter" title="${esc(label)}"><div class="meter-fill" style="width:${Math.max(0, Math.min(100, value))}%;background:${color}"></div><span>${esc(label)}</span></div>`;
+export const bar = (value: number, color: string, label = '', className = ''): string =>
+    `<div class="meter${className ? ` ${className}` : ''}" title="${esc(label)}"><div class="meter-fill" style="width:${Math.max(0, Math.min(100, value))}%;background:${color}"></div><span>${esc(label)}</span></div>`;
 
 export const moodColor = (v: number): string => (v >= 65 ? '#5fd35a' : v >= 40 ? '#e8c547' : '#e0463c');
 export const unrestColor = (v: number): string => (v >= 75 ? '#e0463c' : v >= 45 ? '#e89a3c' : '#5fd35a');

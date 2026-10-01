@@ -172,7 +172,7 @@ const renderOneUnit = (sim: Sim, u: Unit, state: PanelState): string => {
         <div class="col" style="flex:1">
             <h3>${title} ${leader}</h3>
             <div class="row wrap">${relationChip(sim, u.faction)} ${traitChips(u)}</div>
-            ${bar((u.hp / sim.maxHp(u.kind)) * 100, '#5fd35a', `Health ${Math.ceil(u.hp)} / ${sim.maxHp(u.kind)}`)}
+            ${bar((u.hp / sim.maxHp(u.kind)) * 100, '#5fd35a', `Health ${Math.ceil(u.hp)} / ${sim.maxHp(u.kind)}`, 'health')}
             ${u.person ? bar(u.person.mood, moodColor(u.person.mood), `Mood ${Math.round(u.person.mood)}`) : ''}
             <div class="muted">${describeOrder(sim, u)}${carry} · ${esc(def.description)}</div>
             ${u.faction !== KINGDOM && def.damage ? `<div class="muted">⚔ ${def.damage} dmg · 🛡 ${def.armor} armor · range ${def.range}</div>` : ''}
@@ -284,7 +284,7 @@ const renderBuilding = (sim: Sim, b: Building): string => {
         <div class="col" style="flex:1">
             <h3>${def.name}${v ? ` <span class="muted">— ${esc(v.name)}</span>` : ''}</h3>
             <div class="row wrap">${relationChip(sim, b.faction)}</div>
-            ${b.built ? bar((b.hp / max) * 100, '#5fd35a', `Health ${Math.ceil(b.hp)} / ${max}`) : ''}
+            ${b.built ? bar((b.hp / max) * 100, '#5fd35a', `Health ${Math.ceil(b.hp)} / ${max}`, 'health') : ''}
             <div class="muted">${esc(def.description)}</div>
             ${body}
         </div>
