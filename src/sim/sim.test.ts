@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { renderTopbar, renderVillage } from '../ui/panels';
+import { renderModal } from '../ui/modals';
 import { idx } from './map';
 import { generateWorld } from './mapgen';
 import { Pathfinder } from './pathfinding';
 import { newGame } from './create';
 import { deserialize, openSaveText, saveFileName, serialize } from './save';
 import { KINGDOM } from './types';
-import { joinKingdom, judge, resolveProposal, secede, startProposal } from './politics';
-import { VOTE_THRESHOLD } from '../data/balance';
+import { joinKingdom, judge, previewVote, resolveProposal, secede, startProposal, unrestReadout } from './politics';
+import { REBELLION_AFTER, UNREST_HIGH, VOTE_THRESHOLD } from '../data/balance';
 import { makePerson } from './people';
 import { createTradeRoute, issueMove, issueSmartCommand, sendMessenger } from './commands';
 import { damageBuilding, killUnit } from './combat';
@@ -121,6 +123,93 @@ describe('game simulation', () => {
         expect(duel('warrior', 'archer')).toBe('warrior');
         expect(duel('lancer', 'warrior')).toBe('lancer');
         expect(duel('archer', 'lancer')).toBe('archer');
+    });
+
+    it('shows the unrest target and the rebellion countdown from the same numbers the sim uses', () => {
+        const sim = newGame(11);
+        const camp = sim.state.villages.find((v) => v.stage === 'camp')!;
+        joinKingdom(sim, camp, null);
+        camp.happiness = 20;
+        camp.grievances = ['You ignored our vote to build a granary.', 'The palace cost too much.'];
+        camp.unrest = 40;
+        const calm = unrestReadout(camp, sim.state.time);
+        expect(calm.parts.map((part) => part.label)).toEqual(['Low happiness', 'Grievances']);
+        expect(calm.target).toBeCloseTo((55 - 20) * 1.1 + 12);
+        expect(calm.drift).toBeCloseTo((calm.target - 40) * 0.01);
+        expect(calm.rebellionIn).toBeNull();
+        expect(calm.rebellionClose).toBe(false);
+
+        camp.unrest = 80;
+        camp.unrestHighSince = sim.state.time - 30;
+        const hot = unrestReadout(camp, sim.state.time);
+        expect(hot.rebellionIn).toBeCloseTo(REBELLION_AFTER - 30);
+        expect(hot.rebellionClose).toBe(true);
+        expect(hot.line).toBe(UNREST_HIGH);
+    });
+
+    it('previews the unrest, loyalty, and grievance each vote choice will apply', () => {
+        const sim = newGame(11);
+        const camp = sim.state.villages.find((v) => v.stage === 'camp')!;
+        joinKingdom(sim, camp, null);
+        camp.playerPresent = true;
+        camp.unrest = 50;
+        camp.loyalty = 40;
+        startProposal(sim, camp, { type: 'build', building: 'granary' });
+        const proposal = camp.proposal!;
+        proposal.yes = 9;
+        proposal.no = 3;
+        const reject = previewVote(sim, camp, proposal, false, 'player');
+        const approve = previewVote(sim, camp, proposal, true, 'player');
+        expect(approve.agreesWithPeople).toBe(true);
+        expect(approve.unrestDelta).toBeLessThan(0);
+        expect(approve.loyaltyDelta).toBeGreaterThan(0);
+        expect(approve.grievance).toBeNull();
+        expect(approve.consequence).toMatch(/granary/i);
+        expect(reject.agreesWithPeople).toBe(false);
+        expect(reject.unrestDelta).toBeGreaterThan(0);
+        expect(reject.loyaltyDelta).toBeLessThan(0);
+        expect(reject.grievance).toMatch(/ignored our vote/i);
+        expect(reject.consequence).toMatch(/Nothing is built/);
+
+        resolveProposal(sim, camp, false, 'player');
+        expect(camp.unrest).toBeCloseTo(reject.unrestAfter);
+        expect(camp.loyalty).toBeCloseTo(reject.loyaltyAfter);
+        expect(camp.grievances.at(-1)).toBe(reject.grievance);
+    });
+
+    it('prints the unrest drivers, rebellion clock, and both vote outcomes', () => {
+        const sim = newGame(11);
+        const camp = sim.state.villages.find((v) => v.stage === 'camp')!;
+        joinKingdom(sim, camp, null);
+        camp.playerPresent = true;
+        camp.faction = KINGDOM;
+        camp.happiness = 10;
+        camp.unrest = 80;
+        camp.unrestHighSince = sim.state.time - 25;
+        camp.grievances = ['You ignored our vote to build a granary.'];
+        startProposal(sim, camp, { type: 'army' });
+        const proposal = camp.proposal!;
+        proposal.yes = 2;
+        proposal.no = 8;
+        proposal.decider = 'player';
+        const panel = renderVillage(sim, camp);
+        expect(panel).toContain('Low happiness');
+        expect(panel).toContain('Grievances');
+        expect(panel).toContain('You ignored our vote to build a granary.');
+        expect(panel).toContain('Rebellion in');
+        expect(panel).toContain('Queues a barracks');
+        expect(panel).toContain('Drops the proposal');
+        expect(panel).toContain('The people want to reject this.');
+        expect(panel).toContain('stops the rebellion clock');
+        const bar = renderTopbar(sim);
+        expect(bar).toContain(`${camp.name} rebels in`);
+        const kingdom = renderModal(sim, { kind: 'kingdom' });
+        expect(kingdom.html).toContain('Rebels in');
+        camp.unrest = 68;
+        camp.unrestHighSince = null;
+        const modal = renderModal(sim, { kind: 'request', req: { id: 1, type: 'vote', villageId: camp.id, proposalId: proposal.id } });
+        expect(modal.html).toContain('starts the rebellion clock');
+        expect(modal.html).toContain('They will remember it as a grievance.');
     });
 
     it('exiles a player who ignores the people and pushes an unpopular agenda', () => {

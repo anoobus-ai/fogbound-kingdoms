@@ -601,6 +601,93 @@ h4 {
     margin: 6px 0;
 }
 
+.politics-readout {
+    margin: 2px 0 8px;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.unrest-parts,
+.unrest-why {
+    margin: 4px 0 4px 16px;
+    padding: 0;
+}
+
+.unrest-why {
+    color: #8b2a1f;
+}
+
+.delta.up {
+    color: #8b2a1f;
+}
+
+.rebellion-clock,
+.rebellion-warn {
+    border-radius: 6px;
+    padding: 4px 6px;
+    margin: 4px 0;
+    font-weight: 700;
+}
+
+.rebellion-clock {
+    background: rgba(224, 70, 60, 0.16);
+    border: 2px solid #e0463c;
+    color: #8b2a1f;
+}
+
+.rebellion-clock.tight {
+    font-size: 11px;
+    margin: 3px 0 0;
+    padding: 2px 4px;
+}
+
+.rebellion-warn {
+    background: rgba(232, 154, 60, 0.18);
+    border: 2px solid #e89a3c;
+    color: #6b3e12;
+}
+
+.vote-choices {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.vote-choice {
+    border: 1px solid rgba(107, 74, 43, 0.35);
+    border-radius: 6px;
+    padding: 4px 6px;
+    font-size: 12px;
+    line-height: 1.35;
+    background: rgba(255, 255, 255, 0.28);
+}
+
+.vote-choice.agrees {
+    border-color: #3d8a3a;
+}
+
+.vote-choice.defies {
+    border-color: #e0463c;
+}
+
+.good-note {
+    color: #246b22;
+}
+
+.bad-note {
+    color: #8b2a1f;
+}
+
+#topbar .rebel-clock {
+    font-size: 13px;
+    color: #ffb4a8;
+    background: rgba(140, 24, 18, 0.72);
+    border: 1px solid #e0463c;
+    border-radius: 6px;
+    padding: 3px 8px;
+}
+
 /* ---------- modals and screens ---------- */
 
 #modal-layer {

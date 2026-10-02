@@ -1,6 +1,6 @@
 import { BIOMES, NEED_LABELS } from '../data/biomes';
 import { BUILDINGS, BUILD_MENU } from '../data/buildings';
-import { COMMAND_RADIUS, PRESENCE_RADIUS, VOTE_THRESHOLD } from '../data/balance';
+import { COMMAND_RADIUS, PRESENCE_RADIUS, REBELLION_AFTER, UNREST_HIGH, VOTE_THRESHOLD } from '../data/balance';
 import { AGENDAS, MAX_AGENDA, TECHS } from '../data/techs';
 import { TRAITS } from '../data/traits';
 import { FIGHTER_KINDS, UNITS } from '../data/units';
@@ -15,7 +15,8 @@ import { popularity } from '../sim/people';
 import { slotInfo } from '../sim/save';
 import { MERCHANT_DEALS } from '../sim/world';
 import { bar, costHtml, esc, moodColor, personAvatar, unitPortrait, unrestColor } from './dom';
-import { cap } from './panels';
+import { cap, clockText, votePreviewHtml } from './panels';
+import { unrestReadout } from '../sim/politics';
 
 export type ModalView =
     | { kind: 'request'; req: UiRequest }
@@ -130,8 +131,8 @@ const voteHtml = (sim: Sim, villageId: number): string => {
         <p>${esc(p.reason)}</p>
         ${bar((p.yes / total) * 100, '#5fd35a', `${p.yes} for`)}
         ${bar((p.no / total) * 100, '#e0463c', `${p.no} against`)}
-        <p>You are the leader, so the final say is yours. <b>The people want to ${p.yes > p.no ? 'approve' : 'reject'} this.</b>
-        Going against them raises unrest, and they will remember it when judging you.</p>
+        <p>You are here, so the final say is yours. The numbers below are what each choice changes.</p>
+        ${votePreviewHtml(sim, v, p, 'player')}
         <div class="modal-actions">
             <button class="btn" data-action="vote" data-id="${v.id}" data-approve="1">Approve</button>
             <button class="btn red" data-action="vote" data-id="${v.id}" data-approve="0">Reject</button>
@@ -248,11 +249,13 @@ const kingdomHtml = (sim: Sim): string => {
     const rows = villages
         .map((v) => {
             const leader = sim.unitById.get(v.leaderId ?? -1);
+            const left = unrestReadout(v, sim.state.time).rebellionIn;
+            const clock = left == null ? '' : `<div class="rebellion-clock tight">Rebels in ${clockText(left)}</div>`;
             return `<tr>
                 <td><b>${esc(v.name)}</b><br><span class="muted">${BIOMES[v.biome].name}</span></td>
                 <td>${population(sim, v)}/${popCap(sim, v)}</td>
                 <td style="width:90px">${bar(v.happiness, moodColor(v.happiness), `${Math.round(v.happiness)}`)}</td>
-                <td style="width:90px">${bar(v.unrest, unrestColor(v.unrest), `${Math.round(v.unrest)}`)}</td>
+                <td style="width:110px">${bar(v.unrest, unrestColor(v.unrest), `${Math.round(v.unrest)}`)}${clock}</td>
                 <td style="width:90px">${bar(v.loyalty, moodColor(v.loyalty), `${Math.round(v.loyalty)}`)}</td>
                 <td>${v.playerPresent ? '<span class="chip good">You are here</span>' : esc(leader?.person?.name ?? '—')}</td>
                 <td>${costHtml(v.stock)}</td>
@@ -395,7 +398,8 @@ const helpHtml = (): string => `${close}<h2>How to play Fogbound Kingdoms</h2>
     <ul>
         <li><b>Presence:</b> you directly control villages near your explorer. Far villages get orders by messenger, and their leader may refuse.</li>
         <li><b>Leaders:</b> when you leave a village, someone rules in your place. Their personality decides what they build.</li>
-        <li><b>Votes:</b> at ${VOTE_THRESHOLD} people, villagers vote on decisions. You have the final say, but ignoring them breeds unrest and grudges.</li>
+        <li><b>Votes:</b> at ${VOTE_THRESHOLD} people, villagers vote on decisions. You have the final say. Each choice shows the unrest and loyalty it will change before you pick.</li>
+        <li><b>Unrest:</b> the village panel lists what is pushing it. At ${UNREST_HIGH}% a rebellion clock starts and runs for ${clockText(REBELLION_AFTER)}. Drop unrest below ${UNREST_HIGH}% and the clock stops. If it runs out, the village rebels.</li>
         <li><b>Exile:</b> return to a village that disagrees with you (your agenda, broken promises, ignored votes, expensive projects) and they may throw you out.
         Rally allies, build an army and capture their Town Center to take it back.</li>
         <li><b>Needs:</b> each village's land shapes its needs — snowy villages crave food and warmth, forest villages want walls, desert villages need water.</li>
