@@ -36,6 +36,25 @@ const PEOPLE_CHOICES: BuildingKind[] = [
     'house', 'farm', 'granary', 'well', 'market', 'barracks', 'monastery', 'tower', 'wall', 'garden', 'oasis', 'palace'
 ];
 
+/** Unrest drifts toward a target built from these parts. The village panel shows the same numbers. */
+export const UNREST_HAPPINESS_LINE = 55;
+export const UNREST_PER_HAPPINESS_SHORT = 1.1;
+export const UNREST_PER_GRIEVANCE = 6;
+export const UNREST_GRIEVANCE_CAP = 30;
+/** Fraction of the gap between current unrest and its target closed each second. */
+export const UNREST_DRIFT = 0.01;
+
+/** Unrest within this many points of the rebellion line counts as close. */
+export const REBELLION_CLOSE = 15;
+
+export const VOTE_AGREE_UNREST = 6;
+export const VOTE_AGREE_MARGIN = 10;
+export const VOTE_DISAGREE_UNREST = 8;
+export const VOTE_DISAGREE_MARGIN = 20;
+export const VOTE_PLAYER_LOYALTY_AGREE = 3;
+export const VOTE_LEADER_LOYALTY_AGREE = 1;
+export const VOTE_PLAYER_LOYALTY_DISAGREE = 6;
+
 const lastTick = new WeakMap<Sim, number>();
 
 export const updatePolitics = (sim: Sim) => {
@@ -83,10 +102,8 @@ const tickVillagePolitics = (sim: Sim, v: Village) => {
         if (p.decider === 'leader' && now - p.createdAt > LEADER_DECISION_DELAY) leaderDecides(sim, v, p);
     }
 
-    const grievancePressure = Math.min(30, v.grievances.length * 6);
-    const target = Math.max(0, 55 - v.happiness) * 1.1 + grievancePressure;
-    v.unrest += (target - v.unrest) * 0.01;
-    v.unrest = Math.max(0, Math.min(100, v.unrest));
+    const pressure = unrestPressure(v);
+    v.unrest = clampMeter(v.unrest + (pressure.target - v.unrest) * UNREST_DRIFT);
     if (v.unrest >= UNREST_HIGH) {
         v.unrestHighSince ??= now;
         if (now - v.unrestHighSince > REBELLION_AFTER) rebellion(sim, v);
@@ -107,6 +124,143 @@ const tickVillagePolitics = (sim: Sim, v: Village) => {
             sim.log(`${v.name}: "You promised — ${promise.text}. You lied to us."`, 'bad', { x: v.cx, y: v.cy });
         }
     }
+};
+
+const clampMeter = (n: number) => Math.max(0, Math.min(100, n));
+
+export interface UnrestPart {
+    label: string;
+    /** Points this part adds to the unrest target. */
+    points: number;
+    detail: string;
+}
+
+export interface UnrestReadout {
+    current: number;
+    target: number;
+    /** Points of unrest added per second. Negative means it is falling. */
+    drift: number;
+    parts: UnrestPart[];
+    /** Seconds left before rebellion, or null when unrest is under the line. */
+    rebellionIn: number | null;
+    /** True when unrest is near the line or the clock is already running. */
+    rebellionClose: boolean;
+    line: number;
+    /** How long unrest must stay at the line before the village rebels. */
+    hold: number;
+}
+
+export const unrestPressure = (v: Village): { happiness: number; grievances: number; target: number } => {
+    const happiness = Math.max(0, UNREST_HAPPINESS_LINE - v.happiness) * UNREST_PER_HAPPINESS_SHORT;
+    const grievances = Math.min(UNREST_GRIEVANCE_CAP, v.grievances.length * UNREST_PER_GRIEVANCE);
+    return { happiness, grievances, target: happiness + grievances };
+};
+
+/** The numbers behind a village's unrest, using the same formula as the simulation. */
+export const unrestReadout = (v: Village, now: number): UnrestReadout => {
+    const pressure = unrestPressure(v);
+    const parts: UnrestPart[] = [];
+    if (pressure.happiness > 0.05) {
+        parts.push({
+            label: 'Low happiness',
+            points: pressure.happiness,
+            detail: `Happiness is ${Math.round(v.happiness)}%. Each point under ${UNREST_HAPPINESS_LINE} adds ${UNREST_PER_HAPPINESS_SHORT} to the unrest target.`
+        });
+    }
+    if (v.grievances.length) {
+        const counted = Math.min(v.grievances.length, UNREST_GRIEVANCE_CAP / UNREST_PER_GRIEVANCE);
+        const extra = v.grievances.length - counted;
+        parts.push({
+            label: 'Grievances',
+            points: pressure.grievances,
+            detail:
+                `${v.grievances.length} grievance${v.grievances.length === 1 ? '' : 's'} × ${UNREST_PER_GRIEVANCE}` +
+                (extra > 0 ? `, capped at ${UNREST_GRIEVANCE_CAP}` : '') +
+                '.'
+        });
+    }
+    const rebellionIn =
+        v.unrest >= UNREST_HIGH && v.unrestHighSince != null ? Math.max(0, REBELLION_AFTER - (now - v.unrestHighSince)) : null;
+    const rebellionClose = rebellionIn != null || v.unrest >= UNREST_HIGH - REBELLION_CLOSE;
+    return {
+        current: v.unrest,
+        target: pressure.target,
+        drift: (pressure.target - v.unrest) * UNREST_DRIFT,
+        parts,
+        rebellionIn,
+        rebellionClose,
+        line: UNREST_HIGH,
+        hold: REBELLION_AFTER
+    };
+};
+
+export const peopleWantApproval = (p: Proposal): boolean => p.yes > p.no;
+
+export const proposalMargin = (p: Proposal): number => Math.abs(p.yes - p.no) / Math.max(1, p.yes + p.no);
+
+export interface VoteChoicePreview {
+    approve: boolean;
+    agreesWithPeople: boolean;
+    unrestDelta: number;
+    unrestAfter: number;
+    loyaltyDelta: number;
+    loyaltyAfter: number;
+    /** Set when this choice writes a grievance the village will remember. */
+    grievance: string | null;
+    /** What this choice does in the world, besides the meters. */
+    consequence: string;
+    /** Unrest crosses or leaves the rebellion line. */
+    crossesLine: 'starts' | 'stops' | null;
+}
+
+const approveConsequence = (sim: Sim, v: Village, kind: ProposalKind): string => {
+    switch (kind.type) {
+        case 'build':
+            return `Places a ${BUILDINGS[kind.building].name} if there is room and ${v.name} can pay. Otherwise they queue it until they can afford it.`;
+        case 'army':
+            return sim.state.buildings.some((b) => b.villageId === v.id && b.built && b.kind === 'barracks')
+                ? 'Trains 3 militia at the barracks.'
+                : 'Queues a barracks, since this village has none yet.';
+        case 'peace':
+            return `Makes peace with ${factionName(sim, kind.withFaction)}. Your relation becomes neutral.`;
+        case 'war':
+            return `Declares war on ${factionName(sim, kind.withFaction)}.`;
+        case 'cancelProject':
+            return `Abandons the ${BUILDINGS[kind.building].name} and returns half its cost to the stores.`;
+        default: {
+            const never: never = kind;
+            throw new Error(`Unknown proposal ${JSON.stringify(never)}`);
+        }
+    }
+};
+
+/** What approve or reject will change, before the choice is made. */
+export const previewVote = (sim: Sim, v: Village, p: Proposal, approve: boolean, by: 'player' | 'leader'): VoteChoicePreview => {
+    const agrees = approve === peopleWantApproval(p);
+    const margin = proposalMargin(p);
+    const unrestDelta = agrees ? -(VOTE_AGREE_UNREST + VOTE_AGREE_MARGIN * margin) : VOTE_DISAGREE_UNREST + VOTE_DISAGREE_MARGIN * margin;
+    const loyaltyDelta = agrees
+        ? by === 'player'
+            ? VOTE_PLAYER_LOYALTY_AGREE
+            : VOTE_LEADER_LOYALTY_AGREE
+        : by === 'player'
+          ? -VOTE_PLAYER_LOYALTY_DISAGREE
+          : 0;
+    const grievance = !agrees && by === 'player' ? `You ignored our vote to ${p.title.toLowerCase()}.` : null;
+    const unrestAfter = clampMeter(v.unrest + unrestDelta);
+    const wasHigh = v.unrest >= UNREST_HIGH;
+    const willBeHigh = unrestAfter >= UNREST_HIGH;
+    return {
+        approve,
+        agreesWithPeople: agrees,
+        unrestDelta,
+        unrestAfter,
+        loyaltyDelta,
+        loyaltyAfter: clampMeter(v.loyalty + loyaltyDelta),
+        grievance,
+        consequence: approve ? approveConsequence(sim, v, p.kind) : 'Drops the proposal. Nothing is built, trained, or changed.',
+        crossesLine: !wasHigh && willBeHigh ? 'starts' : wasHigh && !willBeHigh ? 'stops' : null
+    };
 };
 
 // ---------- leaving & returning ----------
@@ -411,24 +565,19 @@ export const resolveProposal = (sim: Sim, v: Village, approve: boolean, by: 'pla
     p.resolved = true;
     v.proposal = null;
     v.nextProposalAt = sim.state.time + PROPOSAL_INTERVAL;
-    const peopleWant = p.yes > p.no;
-    const margin = Math.abs(p.yes - p.no) / Math.max(1, p.yes + p.no);
+    const peopleWant = peopleWantApproval(p);
+    const preview = previewVote(sim, v, p, approve, by);
     const leader = sim.unitById.get(v.leaderId ?? -1);
     const who = by === 'player' ? 'You' : leader?.person?.name ?? 'The people';
 
     if (approve) carryOut(sim, v, p.kind);
-    if (approve === peopleWant) {
-        v.unrest = Math.max(0, v.unrest - 6 - 10 * margin);
-        v.loyalty = Math.min(100, v.loyalty + (by === 'player' ? 3 : 1));
+    v.unrest = preview.unrestAfter;
+    v.loyalty = preview.loyaltyAfter;
+    if (preview.grievance) v.grievances.push(preview.grievance);
+    if (preview.agreesWithPeople) {
         sim.log(`${who} ${approve ? 'approved' : 'rejected'} "${p.title}", as the people wished.`, 'politics', { x: v.cx, y: v.cy });
     } else {
-        v.unrest = Math.min(100, v.unrest + 8 + 20 * margin);
-        if (by === 'player') {
-            v.grievances.push(`You ignored our vote to ${p.title.toLowerCase()}.`);
-            v.loyalty = Math.max(0, v.loyalty - 6);
-        } else if (leader?.person) {
-            leader.person.mood = Math.max(0, leader.person.mood - 10);
-        }
+        if (by === 'leader' && leader?.person) leader.person.mood = Math.max(0, leader.person.mood - 10);
         sim.log(`${who} ignored the people of ${v.name} and ${approve ? 'approved' : 'rejected'} "${p.title}". Unrest grows.`, 'bad', { x: v.cx, y: v.cy });
     }
     if (by === 'leader' && !v.playerPresent) {

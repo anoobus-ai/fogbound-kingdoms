@@ -1,6 +1,6 @@
 import { BIOMES, NEED_LABELS } from '../data/biomes';
 import { BUILDINGS, BUILD_MENU, type BuildCategory } from '../data/buildings';
-import { COMMAND_RADIUS, VOTE_THRESHOLD } from '../data/balance';
+import { COMMAND_RADIUS, UNREST_HIGH, VOTE_THRESHOLD } from '../data/balance';
 import { TECHS } from '../data/techs';
 import { TRAITS } from '../data/traits';
 import { UNITS } from '../data/units';
@@ -8,11 +8,19 @@ import type { Controller } from '../game/controller';
 import { factionColor } from '../render/entities';
 import { freeUrl, oldUrl } from '../render/assets';
 import type { Sim } from '../sim/sim';
-import { KINGDOM, WILD, type Building, type NeedId, type Order, type Unit, type Village } from '../sim/types';
+import { KINGDOM, WILD, type Building, type NeedId, type Order, type Proposal, type Unit, type Village } from '../sim/types';
 import { currentVillage, isBuildingCommandable, isCommandable } from '../sim/commands';
 import { popCap, population } from '../sim/buildings';
 import { NEED_IDS, needWeights } from '../sim/villages';
-import { agendaAlignment, factionName } from '../sim/politics';
+import {
+    agendaAlignment,
+    factionName,
+    peopleWantApproval,
+    previewVote,
+    UNREST_DRIFT,
+    UNREST_HAPPINESS_LINE,
+    unrestReadout
+} from '../sim/politics';
 import { popularity } from '../sim/people';
 import { bar, costHtml, esc, healthColor, icon, moodColor, personAvatar, resIcon, unitPortrait, unrestColor } from './dom';
 
@@ -38,6 +46,15 @@ export const renderTopbar = (sim: Sim): string => {
     const shown = v ?? (explorer ? nearest(kingdomVillages, explorer.x, explorer.y) : kingdomVillages[0]);
     const tod = sim.timeOfDay;
     const sunIcon = sim.isNight ? '🌙' : tod < 0.2 ? '🌅' : '☀️';
+    let soonest: { name: string; left: number; line: number } | null = null;
+    for (const village of kingdomVillages) {
+        const read = unrestReadout(village, sim.state.time);
+        if (read.rebellionIn == null) continue;
+        if (!soonest || read.rebellionIn < soonest.left) soonest = { name: village.name, left: read.rebellionIn, line: read.line };
+    }
+    const rebel = soonest
+        ? `<span class="rebel-clock" title="Unrest has stayed at ${soonest.line}% or higher. Drop it below that and the clock stops.">⚠ ${esc(soonest.name)} rebels in ${clockText(soonest.left)}</span>`
+        : '';
     const place = v ? `In ${esc(v.name)}` : shown ? `Wilderness · stores of ${esc(shown.name)}` : 'The Wilderness';
     const res = shown
         ? (['food', 'wood', 'gold', 'stone'] as const)
@@ -47,6 +64,7 @@ export const renderTopbar = (sim: Sim): string => {
     return `
         <span class="place">${place}</span>
         ${res}
+        ${rebel}
         <span class="clock">${sunIcon} Day ${sim.day} · ${cap(sim.season)} · ${kingdomVillages.length} ${kingdomVillages.length === 1 ? 'village' : 'villages'}</span>`;
 };
 
@@ -54,6 +72,74 @@ const nearest = (vs: Village[], x: number, y: number) =>
     vs.slice().sort((a, b) => Math.hypot(a.cx - x, a.cy - y) - Math.hypot(b.cx - x, b.cy - y))[0];
 
 export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+export const clockText = (seconds: number): string => {
+    const s = Math.max(0, Math.ceil(seconds));
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return m > 0 ? `${m}:${rem.toString().padStart(2, '0')}` : `${rem}s`;
+};
+
+const pointsText = (n: number): string => {
+    const r = Math.round(n * 10) / 10;
+    return Number.isInteger(r) ? String(r) : r.toFixed(1);
+};
+
+const signedText = (n: number): string => {
+    const text = pointsText(Math.abs(n) < 0.05 ? 0 : n);
+    if (text === '0') return '0';
+    return n > 0 ? `+${text}` : text;
+};
+
+export const unrestDetailHtml = (v: Village, now: number): string => {
+    const read = unrestReadout(v, now);
+    const motion =
+        Math.abs(read.drift) < 0.002
+            ? `Holding near ${pointsText(read.target)}.`
+            : `${read.drift > 0 ? 'Rising' : 'Falling'} about ${pointsText(Math.abs(read.drift) * 60)} points a minute, toward ${pointsText(read.target)}. The meter closes ${Math.round(UNREST_DRIFT * 100)}% of the gap each second.`;
+    const parts = read.parts.length
+        ? `<ul class="unrest-parts">${read.parts
+              .map((part) => `<li><b class="delta up">+${pointsText(part.points)}</b> ${esc(part.label)}. ${esc(part.detail)}</li>`)
+              .join('')}</ul>`
+        : `<div class="muted">Nothing is feeding unrest. Happiness is at least ${UNREST_HAPPINESS_LINE}% and there are no grievances.</div>`;
+    const why = v.grievances.length
+        ? `<ul class="unrest-why">${v.grievances.slice(-4).map((g) => `<li>${esc(g)}</li>`).join('')}</ul>`
+        : '';
+    let clock = '';
+    if (read.rebellionIn != null) {
+        clock = `<div class="rebellion-clock">Rebellion in ${clockText(read.rebellionIn)}. Unrest has stayed at ${read.line}% or higher. Drop it below ${read.line}% and this clock stops.</div>`;
+    } else if (read.rebellionClose) {
+        const gap = Math.max(0, read.line - v.unrest);
+        clock = `<div class="rebellion-warn">${gap < 0.5 ? 'Unrest is on' : `${pointsText(gap)} points below`} the rebellion line (${read.line}%). If it stays there for ${clockText(read.hold)}, the village rebels.</div>`;
+    }
+    return `<div class="politics-readout"><div class="muted">${motion}</div>${parts}${why}${clock}</div>`;
+};
+
+const choiceHtml = (sim: Sim, v: Village, p: Proposal, approve: boolean, by: 'player' | 'leader'): string => {
+    const choice = previewVote(sim, v, p, approve, by);
+    const line =
+        choice.crossesLine === 'starts'
+            ? ` This crosses ${UNREST_HIGH}% and starts the rebellion clock.`
+            : choice.crossesLine === 'stops'
+              ? ` This drops unrest under ${UNREST_HIGH}% and stops the rebellion clock.`
+              : '';
+    const memory = choice.grievance ? ' They will remember it as a grievance.' : '';
+    const stance = choice.agreesWithPeople ? 'Agrees with the people.' : by === 'player' ? 'Ignores the vote.' : 'Against the people.';
+    return `<div class="vote-choice ${choice.agreesWithPeople ? 'agrees' : 'defies'}">
+        <b>${approve ? 'Approve' : 'Reject'}</b>
+        <div>${esc(choice.consequence)}</div>
+        <div class="${choice.agreesWithPeople ? 'good-note' : 'bad-note'}">${stance} Unrest ${Math.round(v.unrest)} → ${Math.round(choice.unrestAfter)} (${signedText(choice.unrestDelta)}). Loyalty ${Math.round(v.loyalty)} → ${Math.round(choice.loyaltyAfter)} (${signedText(choice.loyaltyDelta)}).${esc(line)}${memory}</div>
+    </div>`;
+};
+
+export const votePreviewHtml = (sim: Sim, v: Village, p: Proposal, by: 'player' | 'leader'): string => {
+    const want = peopleWantApproval(p);
+    const verdict =
+        p.yes === p.no
+            ? 'The vote is a tie, so rejecting it counts as agreeing with the people.'
+            : `The people want to ${want ? 'approve' : 'reject'} this.`;
+    return `<div class="vote-preview"><div class="muted">${verdict}</div><div class="vote-choices">${choiceHtml(sim, v, p, true, by)}${choiceHtml(sim, v, p, false, by)}</div></div>`;
+};
 
 // ---------- selection panel ----------
 
@@ -334,6 +420,7 @@ export const renderVillage = (sim: Sim, v: Village): string => {
             <div class="muted">${esc(p.reason)}</div>
             <div class="row"><span class="chip good">${p.yes} for</span><span class="chip bad">${p.no} against</span>
             <span class="muted">${p.decider === 'player' ? 'You decide.' : `${esc(leader?.person?.name ?? 'The leader')} will decide.`}</span></div>
+            ${votePreviewHtml(sim, v, p, p.decider)}
             ${p.decider === 'player' && present ? `<div class="row"><button class="btn small" data-action="vote" data-id="${v.id}" data-approve="1">Approve</button><button class="btn small red" data-action="vote" data-id="${v.id}" data-approve="0">Reject</button></div>` : ''}
         </div>`;
     } else if (own && pop < VOTE_THRESHOLD) {
@@ -355,10 +442,6 @@ export const renderVillage = (sim: Sim, v: Village): string => {
         .filter((pr) => pr.kept === null)
         .map((pr) => `<li>Promised: ${esc(pr.text)} (due day ${Math.floor(pr.dueAt / 60) + 1})</li>`)
         .join('');
-    const grievances = v.grievances
-        .slice(-4)
-        .map((g) => `<li>${esc(g)}</li>`)
-        .join('');
     const friends = sim.state.villages.filter((o) => o.id !== v.id && o.stage === 'village' && sim.friendlyFactions(o.faction, v.faction));
     const focusBtn = (r: string | null, label: string) =>
         `<button class="btn small ${v.focus === r ? 'active' : ''}" data-action="focus" data-id="${v.id}" data-res="${r ?? ''}">${label}</button>`;
@@ -376,13 +459,13 @@ export const renderVillage = (sim: Sim, v: Village): string => {
         </div>
         ${bar(v.happiness, moodColor(v.happiness), `Happiness ${Math.round(v.happiness)}%`)}
         ${bar(v.unrest, unrestColor(v.unrest), `Unrest ${Math.round(v.unrest)}%`)}
+        ${own ? unrestDetailHtml(v, sim.state.time) : ''}
         ${bar(v.loyalty, moodColor(v.loyalty), `${own ? 'Loyalty' : 'Opinion of you'} ${Math.round(v.loyalty)}%`)}
         ${own ? `<div class="muted">Your agenda ${alignment > 0.2 ? 'pleases' : alignment < -0.2 ? 'upsets' : 'means little to'} these people (${alignment >= 0 ? '+' : ''}${Math.round(alignment * 100)}).</div>` : ''}
         ${vote}
         <h4>Needs <span class="muted">(★ = matters most here)</span></h4>
         <div class="needs">${needs}</div>
         ${promises ? `<h4>Promises</h4><ul>${promises}</ul>` : ''}
-        ${grievances ? `<h4>Grievances</h4><ul style="color:#8b2a1f">${grievances}</ul>` : ''}
         ${own ? `<h4>Gathering focus</h4><div class="row wrap">${focusBtn(null, 'Balanced')}${focusBtn('food', 'Food')}${focusBtn('wood', 'Wood')}${focusBtn('gold', 'Gold')}${focusBtn('stone', 'Stone')}</div>` : ''}
         ${own && friends.length ? `<h4>Trade</h4><div class="row wrap">${friends.map((f) => `<button class="btn small" data-action="trade" data-from="${v.id}" data-to="${f.id}">🐪 Caravan to ${esc(f.name)}</button>`).join('')}</div>` : ''}
         ${!present ? `<div class="row wrap" style="margin-top:6px"><button class="btn small" data-action="messenger" data-id="${v.id}">✉ Send a messenger</button><button class="btn small" data-action="goto" data-x="${v.cx}" data-y="${v.cy}">Look</button></div>` : ''}
