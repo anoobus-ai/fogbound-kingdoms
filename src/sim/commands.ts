@@ -2,6 +2,7 @@ import { BUILDINGS } from '../data/buildings';
 import { COMMAND_RADIUS } from '../data/balance';
 import { MAX_AGENDA } from '../data/techs';
 import { UNITS } from '../data/units';
+import { unitHit } from '../data/unitArt';
 import { idx, inBounds } from './map';
 import type { Sim } from './sim';
 import {
@@ -84,12 +85,19 @@ export const issueMove = (sim: Sim, units: Unit[], x: number, y: number, attackM
     sim.emit({ type: 'sound', id: 'command' });
 };
 
-export const unitAt = (sim: Sim, x: number, y: number, radius = 0.6): Unit | undefined => {
+/**
+ * Unit under a world point. The test is the sprite's drawn box (feet on the
+ * unit position, body above it), so a click on the model selects that model.
+ */
+export const unitAt = (sim: Sim, x: number, y: number, pad = 0.12): Unit | undefined => {
     let best: Unit | undefined;
-    let bestD = radius;
-    for (const u of sim.spatial.query(x, y - 0.3, radius + 0.5)) {
-        const d = Math.hypot(u.x - x, u.y - 0.3 - y);
-        if (d < bestD) {
+    let bestD = Infinity;
+    for (const u of sim.spatial.query(x, y, 2.6)) {
+        const hit = unitHit(u.kind);
+        const nx = (u.x - x) / (hit.halfW + pad);
+        const ny = (u.y - hit.lift - y) / (hit.halfH + pad);
+        const d = nx * nx + ny * ny;
+        if (d <= 1 && d < bestD) {
             bestD = d;
             best = u;
         }

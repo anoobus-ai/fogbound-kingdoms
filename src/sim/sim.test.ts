@@ -8,7 +8,8 @@ import { KINGDOM } from './types';
 import { joinKingdom, judge, resolveProposal, secede, startProposal } from './politics';
 import { VOTE_THRESHOLD } from '../data/balance';
 import { makePerson } from './people';
-import { createTradeRoute, issueMove, issueSmartCommand, sendMessenger } from './commands';
+import { createTradeRoute, issueMove, issueSmartCommand, sendMessenger, unitAt } from './commands';
+import { unitHit } from '../data/unitArt';
 import { damageBuilding, killUnit } from './combat';
 import { carryCapacity } from './economy';
 import { startResearch } from './buildings';
@@ -326,5 +327,27 @@ describe('unit collision', () => {
                 expect(Math.hypot(pawns[i].x - pawns[j].x, pawns[i].y - pawns[j].y)).toBeGreaterThanOrEqual(0.7);
             }
         }
+    });
+
+    it('selects a unit when the click lands on its drawn body or feet', () => {
+        const sim = newGame(5);
+        const e = sim.explorer()!;
+        const { w, h } = sim.state.map;
+        for (const u of sim.state.units) {
+            if (u !== e) {
+                u.x = 1.5;
+                u.y = 1.5;
+                u.order = { type: 'idle' };
+            }
+        }
+        e.x = w - 4;
+        e.y = h - 4;
+        e.order = { type: 'idle' };
+        sim.update(0);
+        const hit = unitHit(e.kind);
+        expect(unitAt(sim, e.x, e.y - hit.lift)?.id).toBe(e.id);
+        expect(unitAt(sim, e.x, e.y)?.id).toBe(e.id);
+        expect(unitAt(sim, e.x, e.y - hit.lift - hit.halfH)?.id).toBe(e.id);
+        expect(unitAt(sim, e.x + hit.halfW + 0.8, e.y)).toBeUndefined();
     });
 });

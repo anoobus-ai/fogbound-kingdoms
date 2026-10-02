@@ -236,6 +236,7 @@
     background-color: #d9c49a;
     border: 3px solid #6b4a2b;
     flex-shrink: 0;
+    overflow: hidden;
 }
 
 .avatar {
