@@ -1,4 +1,5 @@
 import { freeUrl, oldUrl } from '../render/assets';
+import { portraitBackground } from '../data/unitArt';
 import type { ResourceType, Stock, TeamColor, UnitKind } from '../sim/types';
 
 export const esc = (s: string): string =>
@@ -78,14 +79,11 @@ export const unitPortraitUrl = (kind: UnitKind, color: TeamColor): string => {
     }
 };
 
-/** Portrait box showing the first square frame of a horizontal sprite sheet. */
+/** Portrait cropped to the same pixels the world sprite stands on, so the icon matches the model. */
 export const unitPortrait = (kind: UnitKind, color: TeamColor, size = 64): string => {
-    const lancer = kind === 'lancer';
-    const pixel = kind === 'wolf' || kind === 'bear';
-    const zoom = pixel ? 1 : kind === 'explorer' ? 2.7 : lancer ? 2.4 : kind === 'goblinBarrel' ? 1.3 : 2;
-    const style = pixel
-        ? `background-image:url('${unitPortraitUrl(kind, color)}');background-size:contain;background-repeat:no-repeat;background-position:center;image-rendering:pixelated`
-        : `background-image:url('${unitPortraitUrl(kind, color)}');background-size:auto ${size * zoom}px;background-position:${-(size * (zoom - 1)) / 2}px ${-(size * (zoom - 1)) / 2 - size * 0.08}px;background-repeat:no-repeat`;
+    const bg = portraitBackground(kind, size);
+    const pixel = kind === 'wolf' || kind === 'bear' ? 'image-rendering:pixelated;' : '';
+    const style = `background-image:url('${unitPortraitUrl(kind, color)}');background-size:${bg.size};background-position:${bg.position};background-repeat:no-repeat;${pixel}`;
     return `<div class="portrait" style="width:${size}px;height:${size}px;${style}"></div>`;
 };
 
@@ -249,7 +247,14 @@ export const installNineSlices = async () => {
     ]);
 };
 
-/** Same hotspot as the arrow, so the hand swaps in place instead of jumping to the system pointer. */
-export const cursorCss = (): string => `url('${freeUrl(`${UI}Cursors/Cursor_01.png`)}') 8 4, default`;
-export const handCursorCss = (): string => `url('${freeUrl(`${UI}Cursors/Cursor_02.png`)}') 8 4, pointer`;
-export const denyCursorCss = (): string => `url('${freeUrl(`${UI}Cursors/Cursor_03.png`)}') 31 30, not-allowed`;
+/**
+ * Hotspots are the drawn tip (arrow, hand) or the center of the circle.
+ * They used to sit in the empty corner of the 64px sheet, so the picture
+ * floated away from the click.
+ */
+const cursorRule = (file: string, x: number, y: number, fallback: string): string =>
+    `url('${freeUrl(`${UI}Cursors/${file}`)}') ${x} ${y}, ${fallback}`;
+
+export const cursorCss = (): string => cursorRule('Cursor_01.png', 22, 17, 'default');
+export const handCursorCss = (): string => cursorRule('Cursor_02.png', 23, 17, 'pointer');
+export const denyCursorCss = (): string => cursorRule('Cursor_03.png', 32, 31, 'not-allowed');

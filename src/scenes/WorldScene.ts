@@ -11,9 +11,11 @@ import { newGame } from '../sim/create';
 import { randomSeed } from '../sim/rng';
 import type { Sim } from '../sim/sim';
 import { KINGDOM, type BuildingKind } from '../sim/types';
-import { buildingAt, issueMove, issueSmartCommand, isCommandable, playerPlaceBuilding, unitAt } from '../sim/commands';
+import { buildingAt, issueMove, issueSmartCommand, playerPlaceBuilding, unitAt } from '../sim/commands';
 import { placementProblem } from '../sim/buildings';
 import { idx, inBounds } from '../sim/map';
+import { cursorCss } from '../ui/dom';
+import { unitHit } from '../data/unitArt';
 import { GameUI } from '../ui/ui';
 
 const PAN_SPEED = 900;
@@ -161,6 +163,9 @@ export class WorldScene extends Phaser.Scene {
 
     private setupInput() {
         this.input.mouse?.disableContextMenu();
+        // One cursor for the whole map. Swapping in the system arrow or crosshair
+        // moved the click off the picture, because those hotspots do not match the sword tip.
+        this.input.setDefaultCursor(cursorCss());
         const kb = this.input.keyboard!;
         this.keys = kb.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,SHIFT,CTRL') as Record<string, Phaser.Input.Keyboard.Key>;
         kb.on('keydown-F', () => {
@@ -254,7 +259,7 @@ export class WorldScene extends Phaser.Scene {
 
     private clickSelect(p: Phaser.Input.Pointer) {
         const { x, y } = this.worldTile(p);
-        const u = unitAt(this.sim, x, y, 0.7);
+        const u = unitAt(this.sim, x, y);
         if (u && this.entities.unitShown(u)) {
             const now = this.time.now;
             if (now - this.lastClick.time < 350 && this.lastClick.id === u.id && u.faction === KINGDOM) {
@@ -284,9 +289,15 @@ export class WorldScene extends Phaser.Scene {
         const cam = this.cameras.main;
         const a = cam.getWorldPoint(Math.min(x0, x1), Math.min(y0, y1));
         const b = cam.getWorldPoint(Math.max(x0, x1), Math.max(y0, y1));
-        const inside = this.sim.state.units.filter(
-            (u) => u.faction === KINGDOM && u.x * TILE >= a.x && u.x * TILE <= b.x && u.y * TILE >= a.y && u.y * TILE <= b.y
-        );
+        const inside = this.sim.state.units.filter((u) => {
+            if (u.faction !== KINGDOM) return false;
+            const hit = unitHit(u.kind);
+            const cx = u.x * TILE;
+            const cy = (u.y - hit.lift) * TILE;
+            const hw = hit.halfW * TILE;
+            const hh = hit.halfH * TILE;
+            return cx + hw >= a.x && cx - hw <= b.x && cy + hh >= a.y && cy - hh <= b.y;
+        });
         const fighters = inside.filter((u) => u.kind !== 'pawn');
         const pick = fighters.length && fighters.length < inside.length && !add ? fighters : inside;
         this.controller.selectUnits(pick.map((u) => u.id), add);
@@ -470,15 +481,7 @@ export class WorldScene extends Phaser.Scene {
             }
         }
         const hoverPoint = this.worldTile(p);
-        const hovered = unitAt(this.sim, hoverPoint.x, hoverPoint.y, 0.6);
+        const hovered = unitAt(this.sim, hoverPoint.x, hoverPoint.y, 0.04);
         this.controller.hover = hovered && this.entities.unitShown(hovered) ? hovered.id : buildingAt(this.sim, hoverPoint.x, hoverPoint.y)?.id ?? null;
-        this.input.setDefaultCursor(this.cursorFor(hovered?.faction));
-    }
-
-    private cursorFor(faction: string | undefined): string {
-        if (this.controller.placing) return 'crosshair';
-        const units = this.controller.selectedUnitList();
-        if (faction && faction !== KINGDOM && units.some((u) => isCommandable(this.sim, u)) && this.sim.hostileFactions(KINGDOM, faction)) return 'crosshair';
-        return 'default';
     }
 }

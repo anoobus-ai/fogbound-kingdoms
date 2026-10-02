@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BUILDINGS } from '../data/buildings';
 import { TILE } from '../data/balance';
+import { UNIT_ART, unitHit, unitOriginY } from '../data/unitArt';
 import { biomeAt, idx } from '../sim/map';
 import type { Sim } from '../sim/sim';
 import {
@@ -52,8 +53,6 @@ export const factionColor = (sim: Sim, faction: FactionId): TeamColor => {
     if (faction.startsWith('v')) return sim.village(Number(faction.slice(1)))?.color ?? 'Red';
     return 'Red';
 };
-
-const UNIT_ORIGIN_Y: Partial<Record<string, number>> = { lancer: 0.55, sheep: 0.62 };
 
 export class EntityRenderer {
     private units = new Map<number, UnitView>();
@@ -187,12 +186,9 @@ export class EntityRenderer {
             const color = factionColor(sim, u.faction);
             const key = u.kind === 'wolf' ? 'wolf' : u.kind === 'bear' ? (biomeAt(sim.state.map, u.x, u.y) === 'snow' ? 'polar-bear' : 'bear') : this.unitAnim(u, color);
             if (!view) {
+                const art = UNIT_ART[u.kind];
                 const sprite = this.scene.add.sprite(0, 0, key === 'wolf' || key.includes('bear') ? key : '__DEFAULT');
-                sprite.setOrigin(0.5, UNIT_ORIGIN_Y[u.kind] ?? 0.58);
-                if (u.kind === 'wolf' || u.kind === 'bear') sprite.setScale(u.kind === 'bear' ? 3.4 : 2.8).setOrigin(0.5, 0.8);
-                else if (u.kind === 'explorer') sprite.setScale(1.42);
-                else if (u.kind === 'sheep') sprite.setScale(0.8);
-                else if (u.kind === 'messenger' || u.kind === 'caravan') sprite.setScale(0.9);
+                sprite.setOrigin(0.5, unitOriginY(u.kind)).setScale(art.scale);
                 view = { sprite, key: '' };
                 this.units.set(u.id, view);
             }
@@ -522,23 +518,24 @@ export class EntityRenderer {
         const explorer = sim.explorer();
         if (explorer) {
             rings.lineStyle(3, 0xffd34d, 0.95);
-            rings.strokeEllipse(explorer.x * TILE, explorer.y * TILE + 24, 68, 26);
+            rings.strokeEllipse(explorer.x * TILE, explorer.y * TILE, 52, 18);
         }
 
         for (const u of sim.state.units) {
             const px = u.x * TILE;
             const py = u.y * TILE;
             if (!inView(px, py) || !this.unitShown(u)) continue;
+            const hit = unitHit(u.kind);
             const max = sim.maxHp(u.kind);
             const selected = sel.units.has(u.id);
             if (selected) {
                 const col = u.faction === KINGDOM ? 0x7cff6b : sim.hostileFactions(KINGDOM, u.faction) ? 0xff5a4d : 0xffe066;
                 rings.lineStyle(2, col, 1);
-                rings.strokeEllipse(px, py + 22, 44, 18);
+                rings.strokeEllipse(px, py, Math.max(28, hit.halfW * TILE * 2.2), 16);
             }
             if (u.hp < max || selected || sel.hover === u.id) {
-                const top = u.kind === 'explorer' ? 86 : u.kind === 'lancer' ? 62 : u.kind === 'sheep' ? 34 : u.kind === 'wolf' || u.kind === 'bear' ? 46 : 52;
-                this.bar(g, px, py - top, 50, u.hp / max, 'health');
+                const head = py - (hit.lift + hit.halfH) * TILE;
+                this.bar(g, px, head - 8, 50, u.hp / max, 'health');
             }
         }
 
