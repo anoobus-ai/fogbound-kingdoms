@@ -28,7 +28,7 @@ The Tiny Swords license does not allow sharing the art files, so they are not st
 
 ## Publishing it
 
-The live game is at <https://fogbound-kingdoms.vercel.app>. To update it:
+The live game is at <https://fogbound-kingdoms-two.vercel.app>. To update it:
 
 ```bash
 npm run deploy
