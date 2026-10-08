@@ -20,6 +20,8 @@ export interface PanelState {
     buildTab: Exclude<BuildCategory, 'hidden' | 'core'>;
     villagePanelId: number | null;
     villagePanelClosed: boolean;
+    /** The unit/building card starts compact; this opens the rest of its details. */
+    selectionExpanded: boolean;
 }
 
 const fmt = (n: number) => Math.floor(n).toLocaleString();
@@ -56,6 +58,14 @@ const nearest = (vs: Village[], x: number, y: number) =>
 export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // ---------- selection panel ----------
+
+/** Compact summary, with the rest of the card hidden until the player opens it. */
+const inspectCard = (summary: string, details: string, expanded: boolean): string => `
+    <div class="inspect${expanded ? ' open' : ''}">
+        <div class="inspect-summary">${summary}</div>
+        ${expanded ? `<div class="inspect-details">${details}</div>` : ''}
+        <button type="button" class="inspect-toggle" data-action="toggle-inspect" aria-expanded="${expanded}">${expanded ? 'Less ▴' : 'More ▾'}</button>
+    </div>`;
 
 export const describeOrder = (sim: Sim, u: Unit): string => {
     if (u.engageId !== null) return 'Fighting';
@@ -144,7 +154,7 @@ export const renderSelection = (sim: Sim, c: Controller, state: PanelState): str
     if (units.length === 1) return renderOneUnit(sim, units[0], state);
     if (units.length > 1) return renderManyUnits(sim, units, state);
     const b = c.selectedBuilding !== null ? sim.buildingById.get(c.selectedBuilding) : undefined;
-    if (b) return renderBuilding(sim, b);
+    if (b) return renderBuilding(sim, b, state);
     if (c.selectedBuilding !== null) c.selectedBuilding = null;
     return '';
 };
@@ -154,14 +164,15 @@ const renderOneUnit = (sim: Sim, u: Unit, state: PanelState): string => {
     const color = factionColor(sim, u.faction);
     const village = sim.village(u.villageId);
     const commandable = isCommandable(sim, u);
-    const portrait = u.person ? personAvatar(u.person.avatar) : unitPortrait(u.kind, color, u.kind === 'explorer' ? 76 : 60);
+    const portrait = u.person ? personAvatar(u.person.avatar, true) : unitPortrait(u.kind, color, 36);
     const namedHero = u.kind === 'explorer' && !!sim.state.kingdom.heroName?.trim();
     const title =
         u.kind === 'explorer'
             ? `<input id="hero-name" class="hero-name" maxlength="24" value="${esc(sim.heroName())}" placeholder="Name your hero" spellcheck="false" autocomplete="off" aria-label="Your hero's name" title="Click to name your hero">`
             : u.person
-              ? `${esc(u.person.name)} <span class="muted">— ${def.name}${village ? ` of ${esc(village.name)}` : ''}</span>`
+              ? `${esc(u.person.name)}`
               : def.name;
+    const role = u.kind === 'explorer' ? (namedHero ? 'Explorer' : '') : u.person ? `${def.name}${village ? ` of ${esc(village.name)}` : ''}` : '';
     const leader = village && village.leaderId === u.id ? '<span class="chip politics">Leader</span>' : '';
     let extra = '';
     if (u.faction === KINGDOM && !commandable) {
@@ -179,19 +190,23 @@ const renderOneUnit = (sim: Sim, u: Unit, state: PanelState): string => {
         if (u.kind === 'pawn') extra += '<div class="muted">Right-click trees, gold, stone, sheep or farms to gather. Right-click an unfinished building to help build it.</div>';
     }
     const carry = u.carry && u.carry.amount >= 1 ? ` · carrying ${Math.floor(u.carry.amount)} ${u.carry.type}` : '';
-    return `<div class="row" style="align-items:flex-start">
+    const summary = `<div class="row">
         ${portrait}
-        <div class="col" style="flex:1">
+        <div class="col" style="flex:1;min-width:0">
             ${u.kind === 'explorer' ? title : `<h3>${title} ${leader}</h3>`}
-            ${namedHero ? '<div class="muted">Explorer</div>' : ''}
-            <div class="row wrap">${relationChip(sim, u.faction)} ${traitChips(u)}</div>
+            ${role ? `<div class="muted">${role}</div>` : ''}
+            <div class="row wrap">${relationChip(sim, u.faction)}</div>
             ${healthMeter(u.hp, sim.maxHp(u.kind))}
-            ${u.person ? bar(u.person.mood, moodColor(u.person.mood), `Mood ${Math.round(u.person.mood)}`) : ''}
-            <div class="muted">${describeOrder(sim, u)}${carry} · ${esc(def.description)}</div>
-            ${u.faction !== KINGDOM && def.damage ? `<div class="muted">⚔ ${def.damage} dmg · 🛡 ${def.armor} armor · range ${def.range}</div>` : ''}
-            ${extra}
+            <div class="muted">${describeOrder(sim, u)}${carry}</div>
         </div>
     </div>`;
+    const details = `
+        ${traitChips(u) ? `<div class="row wrap">${traitChips(u)}</div>` : ''}
+        ${u.person ? bar(u.person.mood, moodColor(u.person.mood), `Mood ${Math.round(u.person.mood)}`) : ''}
+        <div class="muted">${esc(def.description)}</div>
+        ${def.damage ? `<div class="muted">⚔ ${def.damage} dmg · 🛡 ${def.armor} armor · range ${def.range}</div>` : ''}
+        ${extra}`;
+    return inspectCard(summary, details, state.selectionExpanded);
 };
 
 const renderManyUnits = (sim: Sim, units: Unit[], state: PanelState): string => {
@@ -202,22 +217,24 @@ const renderManyUnits = (sim: Sim, units: Unit[], state: PanelState): string => 
         else counts.set(u.kind, { n: 1, u });
     }
     const chips = [...counts.values()]
-        .map(({ n, u }) => `<div class="unit-chip" data-action="select-kind" data-kind="${u.kind}" title="${UNITS[u.kind].name}">${unitPortrait(u.kind, factionColor(sim, u.faction), 48)}<b>${n}</b></div>`)
+        .map(({ n, u }) => `<div class="unit-chip" data-action="select-kind" data-kind="${u.kind}" title="${UNITS[u.kind].name}">${unitPortrait(u.kind, factionColor(sim, u.faction), 32)}<b>${n}</b></div>`)
         .join('');
     const commandable = units.filter((u) => isCommandable(sim, u));
     const hasPawn = commandable.some((u) => u.kind === 'pawn');
     const far = units.length - commandable.length;
-    return `<div class="col">
-        <h3>${units.length} units selected</h3>
+    const summary = `<div class="col">
+        <h3>${units.length} units</h3>
         <div class="units-grid">${chips}</div>
+    </div>`;
+    const details = `
         ${far ? `<div class="muted">${far} of them are too far from your explorer to hear orders.</div>` : ''}
         ${commandable.length ? stanceButtons(commandable) : ''}
         ${hasPawn ? buildMenu(sim, state) : ''}
-        <div class="muted">Right-click to move or attack. Hold Ctrl and right-click to march and attack anything on the way.</div>
-    </div>`;
+        <div class="muted">Right-click to move or attack. Hold Ctrl and right-click to march and attack anything on the way.</div>`;
+    return inspectCard(summary, details, state.selectionExpanded);
 };
 
-const buildingArt = (sim: Sim, b: Building): string => {
+const buildingArt = (sim: Sim, b: Building, height = 40): string => {
     const color = factionColor(sim, b.faction);
     const art: Partial<Record<Building['kind'], string>> = {
         townCenter: freeUrl(`Buildings/${color} Buildings/Castle.png`),
@@ -237,17 +254,16 @@ const buildingArt = (sim: Sim, b: Building): string => {
         garden: oldUrl('Deco/12.png')
     };
     const src = art[b.kind];
-    return src ? `<img src="${src}" style="height:84px;max-width:110px;object-fit:contain">` : '';
+    return src ? `<img class="building-art" src="${src}" style="height:${height}px" alt="">` : '';
 };
 
-const renderBuilding = (sim: Sim, b: Building): string => {
+const renderBuilding = (sim: Sim, b: Building, state: PanelState): string => {
     const def = BUILDINGS[b.kind];
     const v = sim.village(b.villageId);
     const max = sim.buildingMaxHp(b);
     const commandable = isBuildingCommandable(sim, b);
     let body = '';
     if (!b.built) {
-        body += bar(b.progress * 100, '#5bc0ff', `Under construction ${Math.round(b.progress * 100)}%`);
         body += '<div class="muted">Select villagers and right-click it to help build.</div>';
     } else if (b.faction === KINGDOM && commandable) {
         if (def.trains.length) {
@@ -292,16 +308,16 @@ const renderBuilding = (sim: Sim, b: Building): string => {
             <button class="btn small" data-action="talk-to" data-id="${v.id}">Talk to ${esc(v.name)}</button>
             <button class="btn small" data-action="messenger" data-id="${v.id}">✉ Send a messenger</button>`;
     }
-    return `<div class="row" style="align-items:flex-start">
+    const summary = `<div class="row">
         ${buildingArt(sim, b)}
-        <div class="col" style="flex:1">
-            <h3>${def.name}${v ? ` <span class="muted">— ${esc(v.name)}</span>` : ''}</h3>
+        <div class="col" style="flex:1;min-width:0">
+            <h3>${def.name}</h3>
+            ${v ? `<div class="muted">${esc(v.name)}</div>` : ''}
             <div class="row wrap">${relationChip(sim, b.faction)}</div>
-            ${b.built ? healthMeter(b.hp, max) : ''}
-            <div class="muted">${esc(def.description)}</div>
-            ${body}
+            ${b.built ? healthMeter(b.hp, max) : bar(b.progress * 100, '#5bc0ff', `${Math.round(b.progress * 100)}% built`)}
         </div>
     </div>`;
+    return inspectCard(summary, `<div class="muted">${esc(def.description)}</div>${body}`, state.selectionExpanded);
 };
 
 // ---------- village panel ----------
