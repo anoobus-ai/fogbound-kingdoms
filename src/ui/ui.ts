@@ -40,7 +40,9 @@ export class GameUI {
     private modalTimer = 0;
     private modal: ModalView | null = null;
     private toastTimer: number | undefined;
-    private state: PanelState = { buildTab: 'economy', villagePanelId: null, villagePanelClosed: false };
+    private state: PanelState = { buildTab: 'economy', villagePanelId: null, villagePanelClosed: false, selectionExpanded: false };
+    /** Selection the compact card was drawn for, so a new click starts collapsed. */
+    private selectionKey = '';
     private handlers: Record<string, Handler>;
     private seenLog = 0;
     /** True while the selection panel is being replaced, so a name field blur does not save a half-typed name. */
@@ -226,8 +228,23 @@ export class GameUI {
         this.refresh(true);
     }
 
+    private inspectKey(): string {
+        const units = this.c
+            .selectedUnitList()
+            .map((u) => u.id)
+            .sort((a, b) => a - b)
+            .join(',');
+        if (units) return `u:${units}`;
+        return this.c.selectedBuilding !== null ? `b:${this.c.selectedBuilding}` : '';
+    }
+
     private refresh(force: boolean) {
         if (force) this.cache.clear();
+        const key = this.inspectKey();
+        if (key !== this.selectionKey) {
+            this.selectionKey = key;
+            this.state.selectionExpanded = false;
+        }
         const sim = this.c.sim;
         this.set(this.els.topbar, 'topbar', renderTopbar(sim));
         const sel = renderSelection(sim, this.c, this.state);
@@ -400,6 +417,9 @@ export class GameUI {
             },
             stance: (el) => setStance(this.c.commandableSelection(), el.dataset.stance as Stance),
             stop: () => stopUnits(sim(), this.c.commandableSelection()),
+            'toggle-inspect': () => {
+                this.state.selectionExpanded = !this.state.selectionExpanded;
+            },
             'build-tab': (el) => (this.state.buildTab = el.dataset.tab as PanelState['buildTab']),
             place: (el) => {
                 this.c.startPlacing(el.dataset.kind as BuildingKind);
